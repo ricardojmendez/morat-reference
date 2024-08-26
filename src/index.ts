@@ -1,4 +1,5 @@
 import { Elysia, t } from 'elysia';
+import { createUser, userExists, getUser, User, userList } from './users';
 
 /**
  * Basic, trivial prototype to play with the points concept.
@@ -21,25 +22,17 @@ import { Elysia, t } from 'elysia';
 
 let currentEpoch = 0;
 
-export type User = {
-	key: string;
-	epochSignUp: number;
-	currentPoints: number;
-	createDate: number;
-	timestamp: number;
-};
-
-const users: Map<string, User> = new Map();
-
 const app = new Elysia()
 	.get('/', () => 'Hello Elysia')
+	.get('/user', () => userList())
 	.get(
 		'/user/:id',
 		({ params: { id }, error }) => {
-			if (!users.has(id)) {
+			const user = getUser(id);
+			if (!user) {
 				return error(404, 'User not found');
 			} else {
-				return users.get(id);
+				return user;
 			}
 		},
 		{
@@ -50,20 +43,10 @@ const app = new Elysia()
 	)
 	.post(
 		'/user/:id',
-		({ params: { id }, error }) => {
-			if (users.has(id)) {
-				return error(409, 'User already exists');
-			} else {
-				users.set(id, {
-					key: id,
-					epochSignUp: currentEpoch,
-					currentPoints: 1000,
-					createDate: Date.now(),
-					timestamp: Date.now(),
-				});
-			}
-			return users.get(id);
-		},
+		({ params: { id }, error }) =>
+			userExists(id)
+				? error(409, 'User already exists')
+				: createUser(id, currentEpoch),
 		{
 			params: t.Object({
 				id: t.String(),
