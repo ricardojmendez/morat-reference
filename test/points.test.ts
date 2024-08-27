@@ -1,8 +1,9 @@
 import { expect, test, describe } from 'bun:test';
-import { createUser } from '../src/users';
+import { createUser, getUser } from '../src/users';
 import {
 	assignPoints,
 	clearPointsAndUsers,
+    epochTick,
 	getPoints,
 	tallyPoints,
 	AssignResult,
@@ -198,4 +199,23 @@ describe('assign - transfer', () => {
 		const aliceTally = tallyPoints(Array.from(alicePoints!.values()));
 		expect(aliceTally).toBe(98);
 	});
+});
+
+describe('epoch tick', () => {
+    test('points are replenished', () => {
+        clearPointsAndUsers();
+        let alice = createUser('alice', 0);
+        let bob = createUser('bob', 0);
+        assignPoints('alice', 'bob', 20, 1);
+        assignPoints('bob', 'alice', 150, 1);
+        expect(alice.ownPoints).toBe(980);
+        expect(bob.ownPoints).toBe(853);
+        // Tick the epoch
+        epochTick(0);
+        alice = getUser('alice')!;
+        bob = getUser('bob')!;
+        expect(alice.ownPoints).toBe(1000);
+        expect(bob.ownPoints).toBe(1000);        
+
+    });
 });

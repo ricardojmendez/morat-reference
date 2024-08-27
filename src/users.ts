@@ -6,10 +6,18 @@ export type User = {
 	timestamp: number;
 };
 
+export const MAX_POINTS = 1000;
+
 const users: Map<string, User> = new Map();
 
 export function getUser(id: string): User | undefined {
 	return users.get(id);
+}
+
+export function topUpPoints(user: User, _epoch: number): User {
+	user.ownPoints = MAX_POINTS;
+	users.set(user.key, user);
+	return user;
 }
 
 export function createUser(id: string, currentEpoch: number): User {

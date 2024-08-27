@@ -1,4 +1,4 @@
-import { clearUsers, getUser, User } from './users';
+import { clearUsers, getUser, userList, topUpPoints } from './users';
 
 export type UserPoints = {
 	fromKey: string;
@@ -11,7 +11,6 @@ export type UserPoints = {
  */
 export type UserPointsMap = Map<string, UserPoints>;
 
-const maxPoints = 1000;
 const minPointTransfer = 1;
 
 const pointMap: Map<string, UserPointsMap> = new Map();
@@ -26,11 +25,6 @@ export function clearPointsAndUsers() {
 
 export function tallyPoints(userPoints: UserPoints[]): number {
 	return userPoints.reduce((acc, { points }) => acc + points, 0);
-}
-
-export function topUpPoints(user: User, _epoch: number): User {
-	user.ownPoints = maxPoints;
-	return user;
 }
 
 function transferPoints(
@@ -157,6 +151,15 @@ export function assignPoints(
 	toUserPoints.set(fromKey, fromKeyPoints);
 
 	return AssignResult.Ok;
+}
+
+export function epochTick(currentEpoch: number): void {
+	for (const key of userList()) {
+		const user = getUser(key);
+		if (user) {
+			topUpPoints(user, currentEpoch);
+		}
+	}
 }
 
 export function getPoints(id: string): UserPointsMap | undefined {

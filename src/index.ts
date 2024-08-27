@@ -1,6 +1,12 @@
 import { Elysia, t } from 'elysia';
 import { createUser, userExists, getUser, userList } from './users';
-import { assignPoints, AssignResult, getPoints, tallyPoints } from './points';
+import {
+	assignPoints,
+	AssignResult,
+	epochTick,
+	getPoints,
+	tallyPoints,
+} from './points';
 
 /**
  * Basic, trivial prototype to play with the points concept.
@@ -12,7 +18,7 @@ import { assignPoints, AssignResult, getPoints, tallyPoints } from './points';
  * [x] Every new user gets 1k points per epoch
  * [x] Allow a user to transfer points to another user
  * [x] Allow querying of current user points
- * [ ] User's own points refill on epoch tick
+ * [x] User's own points refill on epoch tick
  * [ ] User's assigned points decay on epoch tick
  *
  * We'll do all of these in memory for now. This is a prototype.
@@ -22,7 +28,7 @@ import { assignPoints, AssignResult, getPoints, tallyPoints } from './points';
  *
  */
 
-const EPOCH_SECONDS = 5;
+const EPOCH_SECONDS = 10;
 
 let currentEpoch = 0;
 
@@ -110,7 +116,11 @@ const app = new Elysia()
 		}
 	)
 	.get('/epoch', () => currentEpoch)
-	.post('/epoch/tick', () => ++currentEpoch)
+	.post('/epoch/tick', () => {
+		++currentEpoch;
+		epochTick(currentEpoch);
+		return currentEpoch;
+	})
 	.post('/echo', ({ body }) => body)
 	.listen(3000);
 
