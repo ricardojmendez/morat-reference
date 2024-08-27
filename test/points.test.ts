@@ -1,5 +1,5 @@
 import { expect, test, describe } from 'bun:test';
-import { createUser, getUser } from '../src/users';
+import { createUser } from '../src/users';
 import {
 	assignPoints,
 	clearPointsAndUsers,
@@ -132,23 +132,43 @@ describe('assign - transfer', () => {
 		expect(bob.ownPoints).toBe(1000);
 		const preTally = tallyPoints(Array.from(bobsPoints!.values()));
 		expect(preTally).toBe(150);
-		expect(assignPoints('bob', 'zeno', 200, 4)).toBe(AssignResult.Ok);        
+		expect(assignPoints('bob', 'zeno', 200, 4)).toBe(AssignResult.Ok);
 		// Bob's points got deducted proportionally across the spectrum, with
-        // 173 coming from his own points, 9 from alice, and 18 from charlie
-        expect(bob.ownPoints).toBe(827);
+		// 173 coming from his own points, 9 from alice, and 18 from charlie
+		expect(bob.ownPoints).toBe(827);
 		const bobsFinalPoints = Array.from(getPoints('bob')!.values());
-        expect(bobsFinalPoints).toHaveLength(2);
-        expect(bobsFinalPoints).toContainEqual({ fromKey: 'alice', points: 41, epoch: 4 });
-        expect(bobsFinalPoints).toContainEqual({ fromKey: 'charlie', points: 82, epoch: 4 });
-        expect(tallyPoints(bobsFinalPoints)).toBe(123);
-        // Zeno got a total of 200 points, proportionally taken from Bob's points
-        // and the points Bob got from Alice and Charlie
-        expect(zeno.ownPoints).toBe(1000);
-        const zenosFinalPoints = Array.from(getPoints('zeno')!.values());
-        expect(zenosFinalPoints).toHaveLength(3);
-        expect(zenosFinalPoints).toContainEqual({ fromKey: 'alice', points: 9, epoch: 4 });
-        expect(zenosFinalPoints).toContainEqual({ fromKey: 'bob', points: 173, epoch: 4 });
-        expect(zenosFinalPoints).toContainEqual({ fromKey: 'charlie', points: 18, epoch: 4 });
+		expect(bobsFinalPoints).toHaveLength(2);
+		expect(bobsFinalPoints).toContainEqual({
+			fromKey: 'alice',
+			points: 41,
+			epoch: 4,
+		});
+		expect(bobsFinalPoints).toContainEqual({
+			fromKey: 'charlie',
+			points: 82,
+			epoch: 4,
+		});
+		expect(tallyPoints(bobsFinalPoints)).toBe(123);
+		// Zeno got a total of 200 points, proportionally taken from Bob's points
+		// and the points Bob got from Alice and Charlie
+		expect(zeno.ownPoints).toBe(1000);
+		const zenosFinalPoints = Array.from(getPoints('zeno')!.values());
+		expect(zenosFinalPoints).toHaveLength(3);
+		expect(zenosFinalPoints).toContainEqual({
+			fromKey: 'alice',
+			points: 9,
+			epoch: 4,
+		});
+		expect(zenosFinalPoints).toContainEqual({
+			fromKey: 'bob',
+			points: 173,
+			epoch: 4,
+		});
+		expect(zenosFinalPoints).toContainEqual({
+			fromKey: 'charlie',
+			points: 18,
+			epoch: 4,
+		});
 	});
 
 	test('points sent back are lost', () => {

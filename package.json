@@ -1,16 +1,26 @@
 {
-  "name": "morat",
-  "version": "1.0.50",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "bun run --watch src/index.ts"
-  },
-  "dependencies": {
-    "elysia": "latest",
-    "prettier": "^3.3.3"
-  },
-  "devDependencies": {
-    "bun-types": "latest"
-  },
-  "module": "src/index.js"
+	"name": "morat",
+	"version": "1.0.50",
+	"scripts": {
+		"test": "echo \"Error: no test specified\" && exit 1",
+		"dev": "bun run --watch src/index.ts",
+		"prepare": "husky",
+		"prettify": "prettier --check './src/**/*.ts'",
+		"prettify:fix": "prettier --write './src/**/*.ts'",
+		"lint": "eslint . --ext ts --quiet"
+	},
+	"dependencies": {
+		"elysia": "latest",
+		"prettier": "^3.3.3"
+	},
+	"devDependencies": {
+		"bun-types": "latest",
+		"husky": "^9.1.5",
+		"eslint": "^7.29.0",
+		"eslint-config-prettier": "^8.3.0",
+		"eslint-plugin-prettier": "^3.4.0",
+		"@typescript-eslint/eslint-plugin": "^5.59.11",
+		"@typescript-eslint/parser": "^5.0.0"
+	},
+	"module": "src/index.js"
 }

@@ -1,5 +1,5 @@
 import { Elysia, t } from 'elysia';
-import { createUser, userExists, getUser, User, userList } from './users';
+import { createUser, userExists, getUser, userList } from './users';
 import { assignPoints, AssignResult, getPoints } from './points';
 
 /**

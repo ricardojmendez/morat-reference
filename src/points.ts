@@ -28,7 +28,7 @@ export function tallyPoints(userPoints: UserPoints[]): number {
 	return userPoints.reduce((acc, { points }) => acc + points, 0);
 }
 
-export function topUpPoints(user: User, epoch: number): User {
+export function topUpPoints(user: User, _epoch: number): User {
 	user.ownPoints = maxPoints;
 	return user;
 }
@@ -129,7 +129,6 @@ export function assignPoints(
 	}
 
 	const fromOwnPointsPct = fromOwnPoints / fromTotalPoints;
-	const fromAssignedPointsPct = 1 - fromOwnPointsPct;
 
 	// We do a cailing on own points because this will skew towards transfering
 	// own points instead of received, so we keep more of what we've been sent,

@@ -1,0 +1,22 @@
+RED='\033[0;31m';
+NC='\033[0m';
+
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
+if [[ "$BRANCH" = "master" ]]
+then
+	if [[ $(grep -ciE "drift-labs/sdk.*beta.*" ./package.json) -eq 0 ]]
+	then
+		echo "$RED warning: on '$BRANCH' branch but not using a beta release of @drift-labs/sdk $NC"
+	fi
+elif [[ "$BRANCH" = "mainnet-beta" ]]
+then
+	if [[ $(grep -ciE "drift-labs/sdk.*beta.*" ./package.json) -gt 0 ]]
+	then
+		echo "$RED warning: on '$BRANCH' branch but using a beta release of @drift-labs/sdk$NC"
+	fi
+fi
+
+bun prettify
+bun lint
+bun test
