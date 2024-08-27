@@ -1,5 +1,6 @@
 import { Elysia, t } from 'elysia';
 import { createUser, userExists, getUser, User, userList } from './users';
+import { assignPoints, AssignResult, getPoints } from './points';
 
 /**
  * Basic, trivial prototype to play with the points concept.
@@ -53,6 +54,40 @@ const app = new Elysia()
 			}),
 		}
 	)
+	.get(
+		'/points/:id',
+		({ params: { id }, error }) => {
+			const userPoints = getPoints(id);
+			if (!userPoints) {
+				return error(404, 'User not found or they have no points');
+			} else {
+				return Array.from(userPoints);
+			}
+		},
+		{
+			params: t.Object({
+				id: t.String(),
+			}),
+		}
+	)
+	.put(
+		'/points/transfer/:from/:to/:points',
+		({ params: { from, to, points }, error }) => {
+			console.log(from, to, points);
+			const success = assignPoints(from, to, points, currentEpoch);
+			if (success != AssignResult.Ok) {
+				return error(400, `Invalid points transfer: ${success}`);
+			}
+			return { success: true };
+		},
+		{
+			params: t.Object({
+				from: t.String(),
+				to: t.String(),
+				points: t.Number(),
+			}),
+		}
+	)
 	.get('/epoch', () => currentEpoch)
 	.post('/epoch/tick', () => ++currentEpoch)
 	.post('/echo', ({ body }) => body)
@@ -61,9 +96,17 @@ const app = new Elysia()
 console.log(`Creating sample data...`);
 
 const serverPath = `http://${app.server?.hostname}:${app.server?.port}`;
-app.handle(new Request(`${serverPath}/user/alpha`, { method: 'POST' }));
+app.handle(new Request(`${serverPath}/user/alice`, { method: 'POST' }));
 app.handle(new Request(`${serverPath}/epoch/tick`, { method: 'POST' }));
-app.handle(new Request(`${serverPath}/user/beta`, { method: 'POST' }));
+app.handle(new Request(`${serverPath}/user/bob`, { method: 'POST' }));
+app.handle(new Request(`${serverPath}/epoch/tick`, { method: 'POST' }));
+app.handle(new Request(`${serverPath}/user/charlie`, { method: 'POST' }));
+app.handle(
+	new Request(`${serverPath}/points/transfer/charlie/alice/20`, { method: 'PUT' })
+);
+app.handle(
+	new Request(`${serverPath}/points/transfer/alice/bob/10`, { method: 'PUT' })
+);
 app
 	.handle(new Request(`${serverPath}/epoch/tick`, { method: 'POST' }))
 	.then(console.log);
