@@ -21,6 +21,8 @@ import { assignPoints, AssignResult, getPoints } from './points';
  *
  */
 
+const EPOCH_SECONDS = 5;
+
 let currentEpoch = 0;
 
 const app = new Elysia()
@@ -73,7 +75,6 @@ const app = new Elysia()
 	.put(
 		'/points/transfer/:from/:to/:points',
 		({ params: { from, to, points }, error }) => {
-			console.log(from, to, points);
 			const success = assignPoints(from, to, points, currentEpoch);
 			if (success != AssignResult.Ok) {
 				return error(400, `Invalid points transfer: ${success}`);
@@ -102,7 +103,9 @@ app.handle(new Request(`${serverPath}/user/bob`, { method: 'POST' }));
 app.handle(new Request(`${serverPath}/epoch/tick`, { method: 'POST' }));
 app.handle(new Request(`${serverPath}/user/charlie`, { method: 'POST' }));
 app.handle(
-	new Request(`${serverPath}/points/transfer/charlie/alice/20`, { method: 'PUT' })
+	new Request(`${serverPath}/points/transfer/charlie/alice/20`, {
+		method: 'PUT',
+	})
 );
 app.handle(
 	new Request(`${serverPath}/points/transfer/alice/bob/10`, { method: 'PUT' })
@@ -112,3 +115,7 @@ app
 	.then(console.log);
 
 console.log(`🦊 Elysia is running at ${serverPath}`);
+
+setInterval(() => {
+	app.handle(new Request(`${serverPath}/epoch/tick`, { method: 'POST' }));
+}, EPOCH_SECONDS * 1000);
