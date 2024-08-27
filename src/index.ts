@@ -1,6 +1,6 @@
 import { Elysia, t } from 'elysia';
 import { createUser, userExists, getUser, userList } from './users';
-import { assignPoints, AssignResult, getPoints } from './points';
+import { assignPoints, AssignResult, getPoints, tallyPoints } from './points';
 
 /**
  * Basic, trivial prototype to play with the points concept.
@@ -25,6 +25,10 @@ const EPOCH_SECONDS = 5;
 
 let currentEpoch = 0;
 
+const StringID = t.Object({
+	id: t.String(),
+});
+
 const app = new Elysia()
 	.get('/', () => 'Hello Elysia')
 	.get('/user', () => userList())
@@ -39,9 +43,7 @@ const app = new Elysia()
 			}
 		},
 		{
-			params: t.Object({
-				id: t.String(),
-			}),
+			params: StringID,
 		}
 	)
 	.post(
@@ -51,25 +53,42 @@ const app = new Elysia()
 				? error(409, 'User already exists')
 				: createUser(id, currentEpoch),
 		{
-			params: t.Object({
-				id: t.String(),
-			}),
+			params: StringID,
 		}
 	)
 	.get(
-		'/points/:id',
+		'/points/:id/detail',
 		({ params: { id }, error }) => {
 			const userPoints = getPoints(id);
 			if (!userPoints) {
 				return error(404, 'User not found or they have no points');
 			} else {
-				return Array.from(userPoints);
+				return Array.from(userPoints.values());
 			}
 		},
 		{
-			params: t.Object({
-				id: t.String(),
-			}),
+			params: StringID,
+		}
+	)
+	.get(
+		'/points/:id/tally',
+		({ params: { id }, error }) => {
+			const user = getUser(id);
+			if (!user) {
+				return error(404, 'User not found');
+			}
+			const userPoints = getPoints(id);
+			const tally = userPoints
+				? tallyPoints(Array.from(userPoints.values()))
+				: 0;
+			return {
+				own: user.ownPoints,
+				assigned: tally,
+				total: tally + user.ownPoints,
+			};
+		},
+		{
+			params: StringID,
 		}
 	)
 	.put(
