@@ -10,9 +10,10 @@ import { assignPoints, AssignResult, getPoints, tallyPoints } from './points';
  * [x] Tick a new epoch
  * [x] Allow registration of a new user
  * [x] Every new user gets 1k points per epoch
- * [ ] Allow a user to transfer points to another user
- * [ ] Allow querying of current user points
- * [ ] User point refill on epoch tick
+ * [x] Allow a user to transfer points to another user
+ * [x] Allow querying of current user points
+ * [ ] User's own points refill on epoch tick
+ * [ ] User's assigned points decay on epoch tick
  *
  * We'll do all of these in memory for now. This is a prototype.
  *
