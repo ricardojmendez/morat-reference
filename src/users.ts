@@ -1,7 +1,7 @@
 export type User = {
 	key: string;
 	epochSignUp: number;
-	currentPoints: number;
+	ownPoints: number;
 	createDate: number;
 	timestamp: number;
 };
@@ -16,7 +16,7 @@ export function createUser(id: string, currentEpoch: number): User {
 	const user = {
 		key: id,
 		epochSignUp: currentEpoch,
-		currentPoints: 1000,
+		ownPoints: 1000,
 		createDate: Date.now(),
 		timestamp: Date.now(),
 	};
@@ -30,4 +30,11 @@ export function userExists(id: string): boolean {
 
 export function userList(): string[] {
 	return Array.from(users.keys());
+}
+
+/**
+ * Clear all users from the system. Used since the state is shared between tests.
+ */
+export function clearUsers(): void {
+	users.clear();
 }
