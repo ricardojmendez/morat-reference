@@ -11,6 +11,8 @@ export type UserPoints = {
  */
 export type UserPointsMap = Map<string, UserPoints>;
 
+export const DECAY_RATE = 0.1; // Every epoch, 10% of the assigned points are lost.
+
 const minPointTransfer = 1;
 
 const pointMap: Map<string, UserPointsMap> = new Map();
@@ -138,19 +140,50 @@ export function assignPoints(
 		toUserPoints,
 		epoch
 	);
-	pointMap.set(fromKey, fromPointsResult);
-	pointMap.set(toKey, toPointsResult);
-
 	fromUser.ownPoints -= fromOwnPointsTransfer;
-	const fromKeyPoints = toUserPoints.get(fromKey) ?? {
+	const fromKeyPoints = toPointsResult.get(fromKey) ?? {
 		fromKey,
 		points: 0,
 		epoch,
 	};
 	fromKeyPoints.points += fromOwnPointsTransfer;
-	toUserPoints.set(fromKey, fromKeyPoints);
+	toPointsResult.set(fromKey, fromKeyPoints);
+
+	pointMap.set(fromKey, fromPointsResult);
+	pointMap.set(toKey, toPointsResult);
 
 	return AssignResult.Ok;
+}
+
+/**
+ * Decays the points of all users by DECAY_RATE, using a floor - this means
+ * that we will not keep less than 1 point for a specific user assignment.
+ *
+ * @param epoch Epoch to assign for the update
+ */
+export function decayPoints(epoch: number) {
+	const keysToDelete = new Set<string>();
+	for (const [key, userPointsMap] of pointMap.entries()) {
+		const sendersToDelete = new Set<string>();
+		for (const [fromKey, userPoints] of userPointsMap.entries()) {
+			const newPoints = Math.floor(userPoints.points * (1 - DECAY_RATE));
+			if (newPoints > 0) {
+				userPoints.points = newPoints;
+				userPoints.epoch = epoch;
+			} else {
+				sendersToDelete.add(fromKey);
+			}
+		}
+		for (const key of sendersToDelete) {
+			userPointsMap.delete(key);
+		}
+		if (userPointsMap.size == 0) {
+			keysToDelete.add(key);
+		}
+	}
+	for (const key of keysToDelete) {
+		pointMap.delete(key);
+	}
 }
 
 export function epochTick(epoch: number): void {
@@ -160,6 +193,7 @@ export function epochTick(epoch: number): void {
 			topUpPoints(user, epoch);
 		}
 	}
+	decayPoints(epoch);
 }
 
 export function getPoints(id: string): UserPoints[] {

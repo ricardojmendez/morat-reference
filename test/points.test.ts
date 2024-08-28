@@ -96,6 +96,24 @@ describe('assign - transfer', () => {
 		expect(tally).toBe(20);
 	});
 
+	test('can assign a single point', () => {
+		clearPointsAndUsers();
+		const sender = createUser('sender', 0);
+		createUser('receiver', 0);
+		const result = assignPoints('sender', 'receiver', 1, 0);
+		expect(result).toBe(AssignResult.Ok);
+		expect(sender.ownPoints).toBe(999);
+		const receiverPoints = getPoints('receiver');
+		const tally = tallyPoints(receiverPoints);
+		expect(receiverPoints).toHaveLength(1);
+		expect(receiverPoints[0]).toEqual({
+			fromKey: 'sender',
+			points: 1,
+			epoch: 0,
+		});
+		expect(tally).toBe(1);
+	});
+
 	test('can receive points from many users', () => {
 		clearPointsAndUsers();
 		const alice = createUser('alice', 0);
@@ -211,12 +229,44 @@ describe('epoch tick', () => {
 		expect(alice.ownPoints).toBe(980);
 		expect(bob.ownPoints).toBe(853);
 		// Tick the epoch
-		epochTick(0);
+		epochTick(1);
 		alice = getUser('alice')!;
 		bob = getUser('bob')!;
 		expect(alice.ownPoints).toBe(1000);
 		expect(bob.ownPoints).toBe(1000);
 	});
 
-    });
+	test('points decay', () => {
+		clearPointsAndUsers();
+		createUser('alice', 0);
+		createUser('bob', 0);
+		createUser('charlie', 0);
+		createUser('drew', 0);
+		// If alice transfers to charlie after having received points from drew,
+		// then she'll end up with fewer assigned points
+		assignPoints('alice', 'bob', 20, 1);
+		assignPoints('alice', 'charlie', 40, 1);
+		assignPoints('bob', 'charlie', 100, 1);
+		assignPoints('drew', 'alice', 1, 1);
+		// Check the points before decay
+		expect(tallyPoints(getPoints('alice'))).toBe(1);
+		const bobPointsPre = getPoints('bob');
+		expect(tallyPoints(bobPointsPre)).toBe(18);
+		const charliePointsPre = getPoints('charlie');
+		expect(tallyPoints(charliePointsPre)).toBe(140);
+		// Tick the epoch and decay
+		epochTick(1);
+		const alicePoints = getPoints('alice');
+		expect(alicePoints).toBeEmpty(); // Empty elements are removed
+		expect(tallyPoints(alicePoints)).toBe(0);
+		expect(tallyPoints(getPoints('bob'))).toBe(16);
+		expect(tallyPoints(getPoints('charlie'))).toBe(125);
+		// Tick the epoch and decay
+		epochTick(2);
+		expect(alicePoints).toBeEmpty(); // Empty elements are removed
+		expect(tallyPoints(getPoints('alice'))).toBe(0);
+		expect(tallyPoints(getPoints('bob'))).toBe(14);
+		const charliePointsPost = getPoints('charlie');
+		expect(tallyPoints(charliePointsPost)).toBe(112);
+	});
 });

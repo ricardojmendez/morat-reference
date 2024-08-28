@@ -25,7 +25,7 @@ OK, things to do here...
 - [x] Allow a user to transfer points to another user
 - [x] Allow querying of current user points
 - [x] User's own points refill on epoch tick
-- [ ] User's assigned points decay on epoch tick
+- [x] User's assigned points decay on epoch tick
 
 We'll do all of these in memory for now. This is a prototype.
 
