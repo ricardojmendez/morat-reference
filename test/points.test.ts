@@ -3,7 +3,7 @@ import { createUser, getUser } from '../src/users';
 import {
 	assignPoints,
 	clearPointsAndUsers,
-    epochTick,
+	epochTick,
 	getPoints,
 	tallyPoints,
 	AssignResult,
@@ -89,10 +89,10 @@ describe('assign - transfer', () => {
 		expect(receiver.ownPoints).toBe(1000);
 		// Receiver points are tagged as from the sender
 		const receiverPoints = getPoints('receiver');
-		const fromSender = receiverPoints?.get('sender');
+		const fromSender = receiverPoints[0];
 		expect(fromSender).toEqual({ fromKey: 'sender', points: 20, epoch: 1 });
 		// Point tally is 20, because we only got one transfer
-		const tally = tallyPoints(Array.from(receiverPoints!.values()));
+		const tally = tallyPoints(receiverPoints);
 		expect(tally).toBe(20);
 	});
 
@@ -110,13 +110,13 @@ describe('assign - transfer', () => {
 		expect(bob.ownPoints).toBe(1000);
 		// Bob's point tally adds up
 		const bobsPoints = getPoints('bob');
-		const tally = tallyPoints(Array.from(bobsPoints!.values()));
+		const tally = tallyPoints(bobsPoints);
 		expect(tally).toBe(51);
 		// Bob's received points have the right tags
 		const receiverPoints = getPoints('bob');
-		const fromAlice = receiverPoints?.get('alice');
+		const fromAlice = receiverPoints.find((p) => p.fromKey === 'alice');
 		expect(fromAlice).toEqual({ fromKey: 'alice', points: 20, epoch: 1 });
-		const fromCharlie = receiverPoints?.get('charlie');
+		const fromCharlie = receiverPoints.find((p) => p.fromKey === 'charlie');
 		expect(fromCharlie).toEqual({ fromKey: 'charlie', points: 31, epoch: 3 });
 	});
 
@@ -131,13 +131,13 @@ describe('assign - transfer', () => {
 		// Bob's point tally adds up
 		const bobsPoints = getPoints('bob');
 		expect(bob.ownPoints).toBe(1000);
-		const preTally = tallyPoints(Array.from(bobsPoints!.values()));
+		const preTally = tallyPoints(bobsPoints);
 		expect(preTally).toBe(150);
 		expect(assignPoints('bob', 'zeno', 200, 4)).toBe(AssignResult.Ok);
 		// Bob's points got deducted proportionally across the spectrum, with
 		// 173 coming from his own points, 9 from alice, and 18 from charlie
 		expect(bob.ownPoints).toBe(827);
-		const bobsFinalPoints = Array.from(getPoints('bob')!.values());
+		const bobsFinalPoints = getPoints('bob');
 		expect(bobsFinalPoints).toHaveLength(2);
 		expect(bobsFinalPoints).toContainEqual({
 			fromKey: 'alice',
@@ -153,7 +153,7 @@ describe('assign - transfer', () => {
 		// Zeno got a total of 200 points, proportionally taken from Bob's points
 		// and the points Bob got from Alice and Charlie
 		expect(zeno.ownPoints).toBe(1000);
-		const zenosFinalPoints = Array.from(getPoints('zeno')!.values());
+		const zenosFinalPoints = getPoints('zeno');
 		expect(zenosFinalPoints).toHaveLength(3);
 		expect(zenosFinalPoints).toContainEqual({
 			fromKey: 'alice',
@@ -189,33 +189,34 @@ describe('assign - transfer', () => {
 		expect(bob.ownPoints).toBe(902);
 		// Receiver points are tagged as from the sender
 		const bobPoints = getPoints('bob');
-		const fromAlice = bobPoints?.get('alice');
+		const fromAlice = bobPoints.find((p) => p.fromKey === 'alice');
 		expect(fromAlice).toEqual({ fromKey: 'alice', points: 18, epoch: 1 });
 		// Bob's point tally is 18 after deducting the 2 points that got wiped
-		const bobTally = tallyPoints(Array.from(bobPoints!.values()));
+		const bobTally = tallyPoints(bobPoints);
 		expect(bobTally).toBe(18);
 		// Alice's tally is only 98, because she didn't get her two points back
 		const alicePoints = getPoints('alice');
-		const aliceTally = tallyPoints(Array.from(alicePoints!.values()));
+		const aliceTally = tallyPoints(alicePoints);
 		expect(aliceTally).toBe(98);
 	});
 });
 
 describe('epoch tick', () => {
-    test('points are replenished', () => {
-        clearPointsAndUsers();
-        let alice = createUser('alice', 0);
-        let bob = createUser('bob', 0);
-        assignPoints('alice', 'bob', 20, 1);
-        assignPoints('bob', 'alice', 150, 1);
-        expect(alice.ownPoints).toBe(980);
-        expect(bob.ownPoints).toBe(853);
-        // Tick the epoch
-        epochTick(0);
-        alice = getUser('alice')!;
-        bob = getUser('bob')!;
-        expect(alice.ownPoints).toBe(1000);
-        expect(bob.ownPoints).toBe(1000);        
+	test('points are replenished', () => {
+		clearPointsAndUsers();
+		let alice = createUser('alice', 0);
+		let bob = createUser('bob', 0);
+		assignPoints('alice', 'bob', 20, 1);
+		assignPoints('bob', 'alice', 150, 1);
+		expect(alice.ownPoints).toBe(980);
+		expect(bob.ownPoints).toBe(853);
+		// Tick the epoch
+		epochTick(0);
+		alice = getUser('alice')!;
+		bob = getUser('bob')!;
+		expect(alice.ownPoints).toBe(1000);
+		expect(bob.ownPoints).toBe(1000);
+	});
 
     });
 });

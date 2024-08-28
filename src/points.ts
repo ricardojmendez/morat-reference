@@ -153,15 +153,16 @@ export function assignPoints(
 	return AssignResult.Ok;
 }
 
-export function epochTick(currentEpoch: number): void {
+export function epochTick(epoch: number): void {
 	for (const key of userList()) {
 		const user = getUser(key);
 		if (user) {
-			topUpPoints(user, currentEpoch);
+			topUpPoints(user, epoch);
 		}
 	}
 }
 
-export function getPoints(id: string): UserPointsMap | undefined {
-	return pointMap.get(id);
+export function getPoints(id: string): UserPoints[] {
+	const values = pointMap.get(id)?.values();
+	return values ? Array.from(values) : [];
 }

@@ -56,7 +56,7 @@ const app = new Elysia()
 			if (!userPoints) {
 				return error(404, 'User not found or they have no points');
 			} else {
-				return Array.from(userPoints.values());
+				return userPoints;
 			}
 		},
 		{
