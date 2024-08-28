@@ -11,20 +11,6 @@ import {
 /**
  * Basic, trivial prototype to play with the points concept.
  *
- * OK, things to do here...
- *
- * [x] Tick a new epoch
- * [x] Allow registration of a new user
- * [x] Every new user gets 1k points per epoch
- * [x] Allow a user to transfer points to another user
- * [x] Allow querying of current user points
- * [x] User's own points refill on epoch tick
- * [ ] User's assigned points decay on epoch tick
- *
- * We'll do all of these in memory for now. This is a prototype.
- *
- * If this is going to end up running on Solana, it will likely need account
- * compression in order to save on storage costs.
  *
  */
 
