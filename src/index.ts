@@ -7,10 +7,12 @@ import {
 	getPoints,
 	tallyPoints,
 } from './points';
+import { html } from '@elysiajs/html';
+import { promises as fs } from 'fs';
+import path from 'path';
 
 /**
  * Basic, trivial prototype to play with the points concept.
- *
  *
  */
 
@@ -23,7 +25,17 @@ const StringID = t.Object({
 });
 
 const app = new Elysia()
-	.get('/', () => 'Hello Elysia')
+	.use(html())
+	.get('/', async () => {
+		let htmlContent = '';
+		try {
+			const filePath = path.join(__dirname, '../html/index.html');
+			htmlContent = await fs.readFile(filePath, 'utf-8');
+		} catch (error) {
+			console.error('Error reading template file:', error);
+		}
+		return htmlContent;
+	})
 	.get('/user', () => userList())
 	.get(
 		'/user/:id',

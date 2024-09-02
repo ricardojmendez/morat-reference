@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Agent Swarm</title>
+		<style>
+			#agent-list {
+				font-family: Arial, sans-serif;
+				margin-top: 20px;
+			}
+		</style>
+	</head>
+	<body>
+		<h1>Point tally</h1>
+		<div id="current-epoch">Epoch...</div>
+		<div id="agent-list">Loading agent data...</div>
+		<script>
+			async function fetchAgentData() {
+				const epochResponse = await fetch('http://localhost:3000/epoch', {
+					method: 'GET',
+				});
+				const epoch = await epochResponse.json();
+				const epochDiv = document.getElementById('current-epoch');
+				epochDiv.innerHTML = `Current epoch: ${epoch}`;
+				try {
+					const response = await fetch('http://localhost:3000/user', {
+						method: 'GET',
+					});
+					const agentNames = await response.json();
+
+					const agents = new Map();
+					for (const agent of agentNames) {
+						const agentResp = await fetch(
+							`http://localhost:3000/points/${agent}/tally`,
+							{
+								method: 'GET',
+							}
+						);
+						const agentPoints = await agentResp.json();
+						agents.set(agent, agentPoints);
+					}
+
+					const agentListDiv = document.getElementById('agent-list');
+					let htmlContent = '<ul>';
+					for (const [agent, points] of agents) {
+						htmlContent += `<li>${agent} - Assigned: ${points.assigned} (to assign: ${points.own})</li>`;
+					}
+					htmlContent += '</ul>';
+					agentListDiv.innerHTML = htmlContent;
+				} catch (error) {
+					console.error('Failed to fetch agent data:', error);
+				}
+			}
+
+			// Fetch agent data every 2 seconds
+			setInterval(fetchAgentData, 1000);
+
+			// Initial fetch
+			fetchAgentData();
+		</script>
+	</body>
+</html>
