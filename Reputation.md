@@ -8,8 +8,9 @@ Primarily:
 - Have the system be easily quantifiable.
 - Avoid reputation points to become an easily-tradeable currency - they should not be money.
 - Let this reputation decay with time - someone doing something popular at some point in the far past doesn't mean that reputation should carry forward.
+- Do not provide a single view of the world, on what could be considered a "high score problem" - someone having a lot of points doesn't mean that *you* should trust them.
 
-The last two are particularly important - while *Down And Out In the Magic Kingdom*'s Whuffie sounded like a fun idea when I first encountered, there are a lot of aspects of it I can see that would be an issue after seeing years of behavior in the crypto space:
+The last two are particularly important - while *Down And Out In the Magic Kingdom*'s Whuffie sounded like a fun idea when I first encountered it, there are a lot of aspects of it I can see that would be an issue after seeing years of behavior in the crypto space:
 
 - It doesn't decay, so popularity at one point in the past implies you still have that value;
 - Durable reputation across time leads to a "rich get richer" situation, because people will flock to those with an ever-growing score;
@@ -57,7 +58,7 @@ On the goals:
 
 - We can see this is similar to an UTXO system, with some constraints (there are rules on how things are transferred and choice is not arbitrary).
 - Given these are UTXOs, and the amounts are always accounted for and controlled by the contract, decaying them through time by any desirable measure becomes easier (even if the UTXO approach adds overhead once the network grows, because the outputs aren't collapsible.)
-- The fact that they are UTXOs and tracked individually has an added advantage: there is no single "reputation score" tally for a user, and anyone could write their own reputation heuristic based on the raw data (potentially even considering transfer history).
+- The fact that they are UTXOs and tracked individually has an added advantage: there is no single "reputation score" tally for a user, and anyone could write their own reputation heuristic based on the raw data (potentially even considering transfer history or deciding to discounts point from a source).
 - Having multiple reputation heuristics available would ideally further discourage people viewing this as money or as a fixed score to be maximized, thus helping defuse the extrinsic reward threat.
 - One could argue that on step 5 above it is unfair that A gets the full 50 point deduction while D only receives 48. That is OK. The points are meant to represent weight in the community at large - a recurrent closed loop of mutual backpatting may have value for the individuals, but means little for the group.
 - The fact points are potentially lost in a transfer also discourages users of thinking of these as money, or trying to add financial primitives on top. The contract will always control assignment, so users couldn't transfer them arbitrarily like they can transfer an SPL token. However, I could see a primitive where a bot acting as a pool controls a large volume of kudos, and users attempt to trade with it via side channels. The fact no user can be guaranteed to get an exact allocation will introduce a fuzziness to such a trade that should discourage it.
