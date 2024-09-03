@@ -13,7 +13,10 @@ export type UserPointsMap = Map<string, UserPoints>;
 
 export const DECAY_RATE = 0.1; // Every epoch, 10% of the assigned points are lost.
 
+const MORAT_USER = 'morat';
+
 const minPointTransfer = 1;
+const MORAT_PCT = 0.01;
 
 const pointMap: Map<string, UserPointsMap> = new Map();
 
@@ -91,7 +94,7 @@ export enum AssignResult {
 	PointsShouldBePositive,
 }
 
-export function assignPoints(
+function assignPointsWorker(
 	fromKey: string,
 	toKey: string,
 	points: number,
@@ -152,6 +155,45 @@ export function assignPoints(
 	pointMap.set(fromKey, fromPointsResult);
 	pointMap.set(toKey, toPointsResult);
 
+	return AssignResult.Ok;
+}
+
+export function assignPoints(
+	sender: string,
+	receiver: string,
+	points: number,
+	epoch: number
+): AssignResult {
+	if (sender == MORAT_USER) {
+		return AssignResult.SenderDoesNotExist;
+	}
+	/*
+        This duplicates some of the validations from assignPointsWorker because we need to 
+        verify the point amount before we deduct Morat's points.
+     */
+	const senderUser = getUser(sender);
+	if (!senderUser) {
+		return AssignResult.SenderDoesNotExist;
+	}
+
+	const senderPoints = pointMap.get(sender) ?? new Map();
+	const senderAssignedPoints = tallyPoints(Array.from(senderPoints.values()));
+	const fromTotalPoints = senderAssignedPoints + senderUser.ownPoints;
+	if (fromTotalPoints < points) {
+		return AssignResult.NotEnoughPoints;
+	}
+
+	// Now we can transfer
+	const pointsToReceiver = Math.ceil(points * (1 - MORAT_PCT));
+	const pointsToMorat = points - pointsToReceiver;
+
+	const result = assignPointsWorker(sender, receiver, pointsToReceiver, epoch);
+	if (result != AssignResult.Ok) {
+		return result;
+	}
+	if (pointsToMorat > 0) {
+		return assignPointsWorker(sender, MORAT_USER, pointsToMorat, epoch);
+	}
 	return AssignResult.Ok;
 }
 

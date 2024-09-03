@@ -150,11 +150,11 @@ describe('assign - transfer', () => {
 		const bobsPoints = getPoints('bob');
 		expect(bob.ownPoints).toBe(1000);
 		const preTally = tallyPoints(bobsPoints);
-		expect(preTally).toBe(150);
+		expect(preTally).toBe(149); // Got one point less because it went to Morat
 		expect(assignPoints('bob', 'zeno', 200, 4)).toBe(AssignResult.Ok);
 		// Bob's points got deducted proportionally across the spectrum, with
 		// 174 coming from his own points, 8 from alice, and 17 from charlie
-		expect(bob.ownPoints).toBe(826);
+		expect(bob.ownPoints).toBe(825);
 		const bobsFinalPoints = getPoints('bob');
 		expect(bobsFinalPoints).toHaveLength(2);
 		expect(bobsFinalPoints).toContainEqual({
@@ -168,8 +168,8 @@ describe('assign - transfer', () => {
 			epoch: 4,
 		});
 		expect(tallyPoints(bobsFinalPoints)).toBe(123);
-		// Zeno got a total of 200 points, proportionally taken from Bob's points
-		// and the points Bob got from Alice and Charlie
+		// Zeno got a total of 197 points, proportionally taken from Bob's points
+		// and the points Bob got from Alice and Charlie. Three points went to Morat.
 		expect(zeno.ownPoints).toBe(1000);
 		const zenosFinalPoints = getPoints('zeno');
 		expect(zenosFinalPoints).toHaveLength(3);
@@ -180,13 +180,26 @@ describe('assign - transfer', () => {
 		});
 		expect(zenosFinalPoints).toContainEqual({
 			fromKey: 'bob',
-			points: 174,
+			points: 173,
 			epoch: 4,
 		});
 		expect(zenosFinalPoints).toContainEqual({
 			fromKey: 'charlie',
-			points: 17,
+			points: 16,
 			epoch: 4,
+		});
+		// Morat got its share
+		const moratsFinalPoints = getPoints('morat');
+		expect(moratsFinalPoints).toHaveLength(2);
+		expect(moratsFinalPoints).toContainEqual({
+			fromKey: 'bob',
+			points: 2,
+			epoch: 4,
+		});
+		expect(moratsFinalPoints).toContainEqual({
+			fromKey: 'charlie',
+			points: 1,
+			epoch: 3,
 		});
 	});
 
@@ -215,7 +228,61 @@ describe('assign - transfer', () => {
 		// Alice's tally is only 99, because she didn't get her point back
 		const alicePoints = getPoints('alice');
 		const aliceTally = tallyPoints(alicePoints);
-		expect(aliceTally).toBe(99);
+		expect(aliceTally).toBe(98); // 1 point went to Morat
+	});
+});
+
+describe('assign - morat', () => {
+	test('morat gets 1% of the transfers', () => {
+		clearPointsAndUsers();
+		const sender = createUser('sender', 0);
+		const receiver = createUser('receiver', 0);
+		const result = assignPoints('sender', 'receiver', 10, 1);
+		expect(result).toBe(AssignResult.Ok);
+		// Sender gets everything deducted from his own points
+		expect(sender.ownPoints).toBe(990);
+		// Own points of the receiver do not change
+		expect(receiver.ownPoints).toBe(1000);
+		// Receiver points are tagged as from the sender
+		const receiverPoints = getPoints('receiver');
+		const fromSender = receiverPoints[0];
+		expect(fromSender).toEqual({ fromKey: 'sender', points: 10, epoch: 1 });
+		// Point tally is 99, because 1% goes to Morat
+		const tally = tallyPoints(receiverPoints);
+		expect(tally).toBe(10);
+		// Morat has one point
+		const moratPoints = getPoints('morat');
+		expect(moratPoints).toBeEmpty();
+	});
+
+	test('morat gets nothing on small transfers', () => {
+		clearPointsAndUsers();
+		createUser('receiver', 0);
+		const result = assignPoints('morat', 'receiver', 10, 1);
+		expect(result).toBe(AssignResult.SenderDoesNotExist);
+	});
+
+	test('morat gets a percentage of the transfered points', () => {
+		clearPointsAndUsers();
+		const sender = createUser('sender', 0);
+		const receiver = createUser('receiver', 0);
+		const result = assignPoints('sender', 'receiver', 100, 1);
+		expect(result).toBe(AssignResult.Ok);
+		// Sender gets everything deducted from his own points
+		expect(sender.ownPoints).toBe(900);
+		// Own points of the receiver do not change
+		expect(receiver.ownPoints).toBe(1000);
+		// Receiver points are tagged as from the sender
+		const receiverPoints = getPoints('receiver');
+		const fromSender = receiverPoints[0];
+		expect(fromSender).toEqual({ fromKey: 'sender', points: 99, epoch: 1 });
+		// Point tally is 99, because 1% goes to Morat
+		const tally = tallyPoints(receiverPoints);
+		expect(tally).toBe(99);
+		// Morat has one point
+		const moratPoints = getPoints('morat');
+		expect(moratPoints[0]).toEqual({ fromKey: 'sender', points: 1, epoch: 1 });
+		expect(tallyPoints(moratPoints)).toBe(1);
 	});
 });
 
@@ -253,20 +320,20 @@ describe('epoch tick', () => {
 		const bobPointsPre = getPoints('bob');
 		expect(tallyPoints(bobPointsPre)).toBe(19);
 		const charliePointsPre = getPoints('charlie');
-		expect(tallyPoints(charliePointsPre)).toBe(140);
+		expect(tallyPoints(charliePointsPre)).toBe(139); // Morat got 1 point
 		// Tick the epoch and decay
 		epochTick(1);
 		const alicePoints = getPoints('alice');
 		expect(alicePoints).toBeEmpty(); // Empty elements are removed
 		expect(tallyPoints(alicePoints)).toBe(0);
 		expect(tallyPoints(getPoints('bob'))).toBe(17);
-		expect(tallyPoints(getPoints('charlie'))).toBe(125);
+		expect(tallyPoints(getPoints('charlie'))).toBe(124); // Morat got 1 point
 		// Tick the epoch and decay
 		epochTick(2);
 		expect(alicePoints).toBeEmpty(); // Empty elements are removed
 		expect(tallyPoints(getPoints('alice'))).toBe(0);
 		expect(tallyPoints(getPoints('bob'))).toBe(15);
 		const charliePointsPost = getPoints('charlie');
-		expect(tallyPoints(charliePointsPost)).toBe(112);
+		expect(tallyPoints(charliePointsPost)).toBe(111);
 	});
 });

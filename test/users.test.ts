@@ -38,10 +38,11 @@ describe('user creation', () => {
 });
 
 describe('user list', () => {
-	test('returns empty if no users', () => {
+	test('returns only morat if no users', () => {
 		clearUsers();
 		const users = userList();
-		expect(users).toBeEmpty();
+		expect(users).toBeArrayOfSize(1);
+        expect(users).toContain('morat');
 	});
 
 	test('single user after addition', () => {
@@ -49,7 +50,7 @@ describe('user list', () => {
 		createUser('alpha', 1);
 		const users = userList();
 		expect(users).toContain('alpha');
-		expect(users).toBeArrayOfSize(1);
+		expect(users).toBeArrayOfSize(2);
 	});
 
 	test('list returns all users', () => {
@@ -59,6 +60,6 @@ describe('user list', () => {
 		expect(users).toContain('alpha');
 		expect(users).toContain('beta');
 		expect(users).toContain('gamma');
-		expect(users).toBeArrayOfSize(3);
+		expect(users).toBeArrayOfSize(4);
 	});
 });

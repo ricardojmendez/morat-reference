@@ -71,3 +71,8 @@ On the goals:
 	- This should be for the entire transfer - you don't get to cherry-pick. Otherwise you could say *"I'm happy receiving A&B points from A, but I don't like C".*  If you want to be associated with A, you get all their baggage.
 	- This means you don't get to evaluate the point composition - you only get to decide on if you want to be associated with another user.
 	- These points should also decay while they are unclaimed - otherwise it lends itself for users to claim a bunch of points at once for a sudden rep boost.
+- There is currently a system user called `morat`, added as an experiment to see what happens if someone were to get a percentage of all system reputation assignments. We also expect this can act as a reputation sink, to further discourage circular assignments. The rules are:
+    - It will get 1% of every point assignment;
+    - It will never transfer out;
+    - We apply a floor to the points, meaning it will not get any reputation boost on assignments of less than 100 points;
+    - Its reputation will decay the same as everyone else's.

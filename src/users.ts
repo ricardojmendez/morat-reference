@@ -45,4 +45,5 @@ export function userList(): string[] {
  */
 export function clearUsers(): void {
 	users.clear();
+	createUser('morat', 0);
 }

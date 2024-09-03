@@ -125,6 +125,7 @@ const app = new Elysia()
 console.log(`Creating sample data...`);
 
 const serverPath = `http://${app.server?.hostname}:${app.server?.port}`;
+app.handle(new Request(`${serverPath}/user/morat`, { method: 'POST' }));
 app.handle(new Request(`${serverPath}/user/alice`, { method: 'POST' }));
 app.handle(new Request(`${serverPath}/epoch/tick`, { method: 'POST' }));
 app.handle(new Request(`${serverPath}/user/bob`, { method: 'POST' }));
