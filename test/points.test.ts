@@ -153,8 +153,8 @@ describe('assign - transfer', () => {
 		expect(preTally).toBe(150);
 		expect(assignPoints('bob', 'zeno', 200, 4)).toBe(AssignResult.Ok);
 		// Bob's points got deducted proportionally across the spectrum, with
-		// 173 coming from his own points, 9 from alice, and 18 from charlie
-		expect(bob.ownPoints).toBe(827);
+		// 174 coming from his own points, 8 from alice, and 17 from charlie
+		expect(bob.ownPoints).toBe(826);
 		const bobsFinalPoints = getPoints('bob');
 		expect(bobsFinalPoints).toHaveLength(2);
 		expect(bobsFinalPoints).toContainEqual({
@@ -175,17 +175,17 @@ describe('assign - transfer', () => {
 		expect(zenosFinalPoints).toHaveLength(3);
 		expect(zenosFinalPoints).toContainEqual({
 			fromKey: 'alice',
-			points: 9,
+			points: 8,
 			epoch: 4,
 		});
 		expect(zenosFinalPoints).toContainEqual({
 			fromKey: 'bob',
-			points: 173,
+			points: 174,
 			epoch: 4,
 		});
 		expect(zenosFinalPoints).toContainEqual({
 			fromKey: 'charlie',
-			points: 18,
+			points: 17,
 			epoch: 4,
 		});
 	});
@@ -202,20 +202,20 @@ describe('assign - transfer', () => {
 		// Sender's own points did not get altered after the initial assign
 		expect(alice.ownPoints).toBe(980); // Alice only got
 		// Bob needs to have 1000 points deducted, proportional to the shares he
-		// has on the different buckets. This means 98 points will come from his own,
-		// and 2 from the ones he got from Alice.
-		expect(bob.ownPoints).toBe(902);
+		// has on the different buckets. This means 99 points will come from his own,
+		// and 1 from the ones he got from Alice.
+		expect(bob.ownPoints).toBe(901);
 		// Receiver points are tagged as from the sender
 		const bobPoints = getPoints('bob');
 		const fromAlice = bobPoints.find((p) => p.fromKey === 'alice');
-		expect(fromAlice).toEqual({ fromKey: 'alice', points: 18, epoch: 1 });
-		// Bob's point tally is 18 after deducting the 2 points that got wiped
+		expect(fromAlice).toEqual({ fromKey: 'alice', points: 19, epoch: 1 });
+		// Bob's point tally is 19 after deducting the 1 point that got wiped
 		const bobTally = tallyPoints(bobPoints);
-		expect(bobTally).toBe(18);
-		// Alice's tally is only 98, because she didn't get her two points back
+		expect(bobTally).toBe(19);
+		// Alice's tally is only 99, because she didn't get her point back
 		const alicePoints = getPoints('alice');
 		const aliceTally = tallyPoints(alicePoints);
-		expect(aliceTally).toBe(98);
+		expect(aliceTally).toBe(99);
 	});
 });
 
@@ -227,7 +227,7 @@ describe('epoch tick', () => {
 		assignPoints('alice', 'bob', 20, 1);
 		assignPoints('bob', 'alice', 150, 1);
 		expect(alice.ownPoints).toBe(980);
-		expect(bob.ownPoints).toBe(853);
+		expect(bob.ownPoints).toBe(852);
 		// Tick the epoch
 		epochTick(1);
 		alice = getUser('alice')!;
@@ -251,7 +251,7 @@ describe('epoch tick', () => {
 		// Check the points before decay
 		expect(tallyPoints(getPoints('alice'))).toBe(1);
 		const bobPointsPre = getPoints('bob');
-		expect(tallyPoints(bobPointsPre)).toBe(18);
+		expect(tallyPoints(bobPointsPre)).toBe(19);
 		const charliePointsPre = getPoints('charlie');
 		expect(tallyPoints(charliePointsPre)).toBe(140);
 		// Tick the epoch and decay
@@ -259,13 +259,13 @@ describe('epoch tick', () => {
 		const alicePoints = getPoints('alice');
 		expect(alicePoints).toBeEmpty(); // Empty elements are removed
 		expect(tallyPoints(alicePoints)).toBe(0);
-		expect(tallyPoints(getPoints('bob'))).toBe(16);
+		expect(tallyPoints(getPoints('bob'))).toBe(17);
 		expect(tallyPoints(getPoints('charlie'))).toBe(125);
 		// Tick the epoch and decay
 		epochTick(2);
 		expect(alicePoints).toBeEmpty(); // Empty elements are removed
 		expect(tallyPoints(getPoints('alice'))).toBe(0);
-		expect(tallyPoints(getPoints('bob'))).toBe(14);
+		expect(tallyPoints(getPoints('bob'))).toBe(15);
 		const charliePointsPost = getPoints('charlie');
 		expect(tallyPoints(charliePointsPost)).toBe(112);
 	});

@@ -126,10 +126,10 @@ export function assignPoints(
 
 	const fromOwnPointsPct = fromOwnPoints / fromTotalPoints;
 
-	// We do a cailing on own points because this will skew towards transfering
+	// We do a ceiling on own points because this will skew towards transfering
 	// own points instead of received, so we keep more of what we've been sent,
 	// and subtract those that get replenished every epoch.
-	const fromOwnPointsTransfer = Math.floor(points * fromOwnPointsPct);
+	const fromOwnPointsTransfer = Math.ceil(points * fromOwnPointsPct);
 	const fromAssignedPointsTransfer = points - fromOwnPointsTransfer;
 
 	const toUserPoints = pointMap.get(toKey) ?? new Map();
