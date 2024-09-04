@@ -9,55 +9,122 @@
 				font-family: Arial, sans-serif;
 				margin-top: 20px;
 			}
+			table {
+				width: 100%;
+				border-collapse: collapse;
+			}
+			th,
+			td {
+				border: 1px solid #ddd;
+				padding: 8px;
+			}
+			th {
+				background-color: #f2f2f2;
+			}
+			.small-text {
+				font-size: 0.8em;
+				color: gray;
+			}
+			.point-list {
+				font-size: 0.8em;
+				color: black;
+			}
+			.last-column {
+				max-width: 75vw; /* Set maximum width to 50% of the viewport width */
+				white-space: nowrap; /* Ensure content wraps if it exceeds the max width */
+				overflow: hidden;
+				text-overflow: ellipsis;
+			}
 		</style>
+		<script src="https://unpkg.com/vue@3"></script>
 	</head>
 	<body>
 		<h1>Point tally</h1>
-		<div id="current-epoch">Epoch...</div>
-		<div id="agent-list">Loading agent data...</div>
+		<div id="app">
+			<div id="current-epoch">Epoch: {{ epoch }}</div>
+			<div id="agent-list">
+				<table v-if="agents.length">
+					<thead>
+						<tr>
+							<th>Agent</th>
+							<th>Assigned / To Assign</th>
+							<th>Detail</th>
+						</tr>
+					</thead>
+					<tbody>
+						<tr v-for="agent in agents" :key="agent.name">
+							<td>{{ agent.name }}</td>
+							<td>
+								{{ agent.points.assigned }}
+								<span class="small-text">({{ agent.points.own }})</span>
+							</td>
+							<td class="last-column point-list">{{ agent.detail }}</td>
+						</tr>
+					</tbody>
+				</table>
+				<div v-else>Loading agent data...</div>
+			</div>
+		</div>
 		<script>
-			async function fetchAgentData() {
-				const epochResponse = await fetch('http://localhost:3000/epoch', {
-					method: 'GET',
-				});
-				const epoch = await epochResponse.json();
-				const epochDiv = document.getElementById('current-epoch');
-				epochDiv.innerHTML = `Current epoch: ${epoch}`;
-				try {
-					const response = await fetch('http://localhost:3000/user', {
-						method: 'GET',
-					});
-					const agentNames = await response.json();
+			const { createApp } = Vue;
 
-					const agents = new Map();
-					for (const agent of agentNames) {
-						const agentResp = await fetch(
-							`http://localhost:3000/points/${agent}/tally`,
-							{
+			createApp({
+				data() {
+					return {
+						epoch: 'Loading...',
+						agents: [],
+					};
+				},
+				created() {
+					this.fetchAgentData();
+					setInterval(this.fetchAgentData, 1000);
+				},
+				methods: {
+					async fetchAgentData() {
+						try {
+							const epochResponse = await fetch('http://localhost:3000/epoch', {
 								method: 'GET',
+							});
+							const epoch = await epochResponse.json();
+							this.epoch = epoch;
+
+							const response = await fetch('http://localhost:3000/user', {
+								method: 'GET',
+							});
+							const agentNames = await response.json();
+
+							const agents = [];
+							for (const agent of agentNames) {
+								const agentResp = await fetch(
+									`http://localhost:3000/points/${agent}/tally`,
+									{
+										method: 'GET',
+									}
+								);
+								const agentPoints = await agentResp.json();
+								const getDetail = await fetch(
+									`http://localhost:3000/points/${agent}/detail`,
+									{
+										method: 'GET',
+									}
+								);
+								const agentDetail = await getDetail.json();
+								agents.push({
+									name: agent,
+									points: agentPoints,
+									detail: agentDetail
+										.sort((a, b) => b.points - a.points)
+										.map((d) => `${d.fromKey}: ${d.points}`)
+										.join(' | '),
+								});
 							}
-						);
-						const agentPoints = await agentResp.json();
-						agents.set(agent, agentPoints);
-					}
-
-					const agentListDiv = document.getElementById('agent-list');
-					let htmlContent = '<ul>';
-					for (const [agent, points] of agents) {
-						htmlContent += `<li>${agent} - Assigned: ${points.assigned} (to assign: ${points.own})</li>`;
-					}
-					htmlContent += '</ul>';
-					agentListDiv.innerHTML = htmlContent;
-				} catch (error) {
-					console.error('Failed to fetch agent data:', error);
-				}
-			}
-
-			// Fetch agent data every 2 seconds
-			setInterval(fetchAgentData, 1000);
-
-			// Initial fetch
-			fetchAgentData();
+							this.agents = agents;
+						} catch (error) {
+							console.error('Failed to fetch agent data:', error);
+						}
+					},
+				},
+			}).mount('#app');
 		</script>
 	</body>
 </html>
