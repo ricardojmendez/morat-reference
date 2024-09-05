@@ -15,6 +15,17 @@ bun run dev --watch
 
 The REST API is running at http://localhost:3000/ - check [`index.ts`](src/index.ts) for the current implementation.
 
+## Behavior notes
+
+As of v0.1.0, the behavior fills all the basic criteria I expect from my initial notes. Using v0.1.0 of the [agent swarm](https://github.com/Numergent/morat-agents/tree/v0.1.0), we find that even after a few thousand epochs:
+
+- The decay rate helps handle potential runaway leader issues;
+- No particular account comes to dominate, even if they have a large number of users giving them points;
+- Morat's own account doesn't get an overwhelming amount of points, even when some users do large transfers, given the fact that they only act as a sink on transfers over 100 and will decay along with everyone else;
+
+![Point tally](images/tally-screenshot-0.1.0.png)
+
+
 ## TODO
 
 OK, things to do here...
