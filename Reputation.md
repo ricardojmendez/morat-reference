@@ -76,3 +76,7 @@ On the goals:
     - It will never transfer out;
     - We apply a floor to the points, meaning it will not get any reputation boost on assignments of less than 100 points;
     - Its reputation will decay the same as everyone else's.
+- There is a potential for reputation trolling - eg., a known, hated Nazi gifting you a lot of rep points to be a dick.
+	- In that scenario, they'd have to spend some of their limited reputation doing that, and it should be fairly obvious to anyone writing a custom reputation heuristic;
+	- There are other solutions as well, such as simply allowing users to opt in before receiving kudos from someone;
+	- Allowing users to opt in also trivially allows for blocking - if I block Stalin, and he tries to send me kudos to pretend we think alike, he loses that reputation share that I never claimed.
