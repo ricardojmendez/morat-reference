@@ -4,6 +4,7 @@ export type User = {
 	ownPoints: number;
 	createDate: number;
 	timestamp: number;
+	optsIn: boolean;
 };
 
 export const MAX_POINTS = 1000;
@@ -20,13 +21,18 @@ export function topUpPoints(user: User, _epoch: number): User {
 	return user;
 }
 
-export function createUser(id: string, currentEpoch: number): User {
+export function createUser(
+	id: string,
+	currentEpoch: number,
+	optsIn = true
+): User {
 	const user = {
 		key: id,
 		epochSignUp: currentEpoch,
 		ownPoints: 1000,
 		createDate: Date.now(),
 		timestamp: Date.now(),
+		optsIn,
 	};
 	users.set(id, user);
 	return user;

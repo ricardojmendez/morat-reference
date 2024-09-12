@@ -5,6 +5,7 @@ import {
 	clearPointsAndUsers,
 	epochTick,
 	getPoints,
+	getQueuedPoints,
 	tallyPoints,
 	AssignResult,
 } from '../src/points';
@@ -283,6 +284,157 @@ describe('assign - morat', () => {
 		const moratPoints = getPoints('morat');
 		expect(moratPoints[0]).toEqual({ fromKey: 'sender', points: 1, epoch: 1 });
 		expect(tallyPoints(moratPoints)).toBe(1);
+	});
+});
+
+describe('assign - opt-in', () => {
+	test('users who opted in get their points immediately', () => {
+		clearPointsAndUsers();
+		const sender = createUser('sender', 0, false);
+		const receiver = createUser('receiver', 0, true);
+		const result = assignPoints('sender', 'receiver', 25, 1);
+		expect(result).toBe(AssignResult.Ok);
+		// Sender gets everything deducted from his own points
+		expect(sender.ownPoints).toBe(975);
+		// Own points of the receiver do not change
+		expect(receiver.ownPoints).toBe(1000);
+		// Receiver points are tagged as from the sender
+		const receiverPoints = getPoints('receiver');
+		const fromSender = receiverPoints[0];
+		expect(fromSender).toEqual({ fromKey: 'sender', points: 25, epoch: 1 });
+		// Point tally is 20, because we only got one transfer
+		const tally = tallyPoints(receiverPoints);
+		expect(tally).toBe(25);
+	});
+
+	test('users who did not opt in get their points held up', () => {
+		clearPointsAndUsers();
+		const sender = createUser('sender', 0, true);
+		const receiver = createUser('receiver', 0, false);
+		const result = assignPoints('sender', 'receiver', 25, 1);
+		expect(result).toBe(AssignResult.Ok);
+		// Sender gets everything deducted from his own points, even if the receiver hasn't claimed them
+		expect(sender.ownPoints).toBe(975);
+		// Own points of the receiver do not change
+		expect(receiver.ownPoints).toBe(1000);
+		// Receiver points are tagged as from the sender
+		const receiverPoints = getPoints('receiver');
+		expect(receiverPoints).toBeEmpty();
+		const tally = tallyPoints(receiverPoints);
+		expect(tally).toBe(0);
+	});
+
+	test('unclaimed points end up assigned by user', () => {
+		clearPointsAndUsers();
+		// Create a few users
+		createUser('alice', 0);
+		createUser('bob', 0);
+		const charlie = createUser('charlie', 0);
+		assignPoints('alice', 'bob', 20, 1);
+		assignPoints('bob', 'charlie', 150, 1);
+
+		const charliePointsPre = getPoints('charlie');
+		expect(charliePointsPre).toContainValues([
+			{ fromKey: 'alice', points: 2, epoch: 1 },
+			{ fromKey: 'bob', points: 147, epoch: 1 },
+		]);
+
+		// Anti refuses to opt into point assignments
+		const anti = createUser('anti', 1, false);
+		const awaitingAntiPre = getQueuedPoints('anti');
+		expect(awaitingAntiPre).toBeEmpty();
+
+		const result = assignPoints('charlie', 'anti', 100, 1);
+		expect(result).toBe(AssignResult.Ok);
+		// Sender gets everything deducted from his own points, even if the receiver hasn't claimed them
+		expect(charlie.ownPoints).toBe(912);
+		const charliePointsPost = getPoints('charlie');
+		expect(charliePointsPost).toContainValues([
+			{ fromKey: 'alice', points: 1, epoch: 1 },
+			{ fromKey: 'bob', points: 135, epoch: 1 },
+		]);
+
+		// Own points of the receiver do not change
+		expect(anti.ownPoints).toBe(1000);
+		// Receiver points are tagged as from the sender
+		const antiPoints = getPoints('anti');
+		expect(antiPoints).toBeEmpty();
+
+		const awaitingAntiPost = getQueuedPoints('anti');
+		expect(awaitingAntiPost).toContainValues([
+			{
+				fromKey: 'charlie',
+				epoch: 1,
+				points: [
+					// Notice that the fractional deducted point from alice gets lost
+					{ fromKey: 'bob', points: 11, epoch: 1 },
+					{ fromKey: 'charlie', points: 87, epoch: 1 },
+				],
+			},
+		]);
+	});
+
+	test('multiple unclaimed points get tracked independently', () => {
+		clearPointsAndUsers();
+		// Create a few users
+		createUser('alice', 0);
+		createUser('bob', 0);
+		const charlie = createUser('charlie', 0);
+		assignPoints('alice', 'bob', 20, 1);
+		assignPoints('bob', 'charlie', 150, 1);
+
+		const charliePointsPre = getPoints('charlie');
+		expect(charliePointsPre).toContainValues([
+			{ fromKey: 'alice', points: 2, epoch: 1 },
+			{ fromKey: 'bob', points: 147, epoch: 1 },
+		]);
+
+		// Anti refuses to opt into point assignments
+		const anti = createUser('anti', 1, false);
+
+		expect(assignPoints('charlie', 'anti', 100, 1)).toBe(AssignResult.Ok);
+		expect(assignPoints('charlie', 'anti', 150, 2)).toBe(AssignResult.Ok);
+		// Sender gets everything deducted from his own points, even if the receiver hasn't claimed them
+		expect(charlie.ownPoints).toBe(781);
+		const charliePointsPost = getPoints('charlie');
+		expect(charliePointsPost).toContainValues([
+			{ fromKey: 'bob', points: 116, epoch: 2 },
+		]);
+
+		// Own points of the receiver do not change
+		expect(anti.ownPoints).toBe(1000);
+		// Receiver points are tagged as from the sender
+		const antiPoints = getPoints('anti');
+		expect(antiPoints).toBeEmpty();
+
+		const awaitingAntiPost = getQueuedPoints('anti');
+		expect(awaitingAntiPost).toHaveLength(2);
+		expect(awaitingAntiPost).toContainAllValues([
+			{
+				fromKey: 'charlie',
+				epoch: 1,
+				points: [
+					{ fromKey: 'bob', points: 11, epoch: 1 },
+					{ fromKey: 'charlie', points: 87, epoch: 1 },
+				],
+			},
+			{
+				fromKey: 'charlie',
+				epoch: 2,
+				points: [
+					{
+						fromKey: 'bob',
+						points: 18,
+						epoch: 2,
+					},
+					{
+						fromKey: 'charlie',
+						points: 130,
+						epoch: 2,
+					},
+				],
+			},
+		]);
 	});
 });
 

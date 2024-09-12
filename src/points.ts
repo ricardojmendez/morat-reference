@@ -11,6 +11,12 @@ export type UserPoints = {
  */
 export type UserPointsMap = Map<string, UserPoints>;
 
+type UserPointAssignment = {
+	fromKey: string;
+	epoch: number;
+	points: UserPoints[];
+};
+
 export const DECAY_RATE = 0.1; // Every epoch, 10% of the assigned points are lost.
 
 const MORAT_USER = 'morat';
@@ -20,12 +26,15 @@ const MORAT_PCT = 0.01;
 
 const pointMap: Map<string, UserPointsMap> = new Map();
 
+const queuedAssignments: Map<string, UserPointAssignment[]> = new Map();
+
 /**
  * Clear all users and points from the system. Used since the state is shared between tests.
  */
 export function clearPointsAndUsers() {
 	clearUsers();
 	pointMap.clear();
+	queuedAssignments.clear();
 }
 
 export function tallyPoints(userPoints: UserPoints[]): number {
@@ -187,7 +196,13 @@ function assignPointsWorker(
 	if (toCredit.length == 0) {
 		return AssignResult.DeductFailed;
 	}
-	creditPoints(receiver, toCredit, epoch);
+	if (receiver.optsIn) {
+		creditPoints(receiver, toCredit, epoch);
+	} else {
+		const queued = getQueuedPoints(receiverKey);
+		queued.push({ fromKey: senderKey, epoch, points: toCredit });
+		queuedAssignments.set(receiverKey, queued);
+	}
 	return AssignResult.Ok;
 }
 
@@ -274,4 +289,8 @@ export function epochTick(epoch: number): void {
 export function getPoints(id: string): UserPoints[] {
 	const values = pointMap.get(id)?.values();
 	return values ? Array.from(values) : [];
+}
+
+export function getQueuedPoints(id: string): UserPointAssignment[] {
+	return queuedAssignments.get(id) ?? [];
 }
