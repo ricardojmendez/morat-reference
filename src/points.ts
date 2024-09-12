@@ -1,4 +1,4 @@
-import { clearUsers, getUser, userList, topUpPoints } from './users';
+import { clearUsers, getUser, userList, topUpPoints, User } from './users';
 
 export type UserPoints = {
 	fromKey: string;
@@ -32,18 +32,40 @@ export function tallyPoints(userPoints: UserPoints[]): number {
 	return userPoints.reduce((acc, { points }) => acc + points, 0);
 }
 
-function transferPoints(
-	toKey: string,
-	total: number,
-	fromPoints: UserPointsMap,
-	toPoints: UserPointsMap,
-	epoch: number
-): [UserPointsMap, UserPointsMap] {
+/**
+ * Debits points from a user account by altering it in place and returning a map of the deducted points.
+ * @param user User to deduct points from
+ * @param total Total number of points to deduct
+ * @param epoch Epoch to assign for the update
+ * @returns A vector with the user points map that were deducted from the user (and can potentially be assigned to a new one).
+ */
+function debitPoints(user: User, total: number, epoch: number): UserPoints[] {
+	const senderOwnPoints = user.ownPoints;
+	const senderPoints = getPoints(user.key);
+	const senderPointTally = tallyPoints(senderPoints);
+
+	const senderTotalPoints = senderPointTally + senderOwnPoints;
+
+	if (senderTotalPoints < total) {
+		return [];
+	}
+
+	const fromOwnPointsPct = senderOwnPoints / senderTotalPoints;
+
+	// We do a ceiling on own points because this will skew towards transfering
+	// own points instead of received, so we keep more of what we've been sent,
+	// and subtract those that get replenished every epoch.
+	const fromOwnPointsTransfer = Math.ceil(total * fromOwnPointsPct);
+	const fromAssignedPointsTransfer = total - fromOwnPointsTransfer;
+
+	const fromPoints = pointMap.get(user.key) ?? new Map();
+	const pointsResult: UserPoints[] = [];
+
 	if (total > 0) {
 		const keysToDelete = new Set<string>();
-		const tally = tallyPoints(Array.from(fromPoints.values()));
 		for (const [fromKey, userPoints] of fromPoints.entries()) {
-			const pointSegment = (userPoints.points / tally) * total;
+			const pointSegment =
+				(userPoints.points / senderPointTally) * fromAssignedPointsTransfer;
 			const pointsToTransfer = Math.floor(pointSegment);
 			const pointsToWithdraw = Math.ceil(pointSegment);
 
@@ -62,19 +84,17 @@ function transferPoints(
 				keysToDelete.add(fromKey);
 			}
 
-			// We don't allow points transfer from one user to the themselves, but the original can
-			// lose the points.
-			if (pointsToTransfer < minPointTransfer || fromKey == toKey) {
+			// We don't allow points transfer from one user to the themselves, or a transfer below the minimum,
+			// but the sender can lose the points.
+			if (pointsToTransfer < minPointTransfer) {
 				continue;
 			}
 
-			let targetPoints = toPoints.get(fromKey);
-			if (!targetPoints) {
-				targetPoints = { fromKey, points: 0, epoch: 0 };
-			}
-			targetPoints.epoch = epoch;
-			targetPoints.points += pointsToTransfer;
-			toPoints.set(fromKey, targetPoints);
+			pointsResult.push({
+				fromKey,
+				points: pointsToTransfer,
+				epoch,
+			});
 		}
 
 		// Let's not modify the map while iterating over it.
@@ -82,7 +102,40 @@ function transferPoints(
 			fromPoints.delete(key);
 		}
 	}
-	return [fromPoints, toPoints];
+	pointMap.set(user.key, fromPoints);
+	user.ownPoints -= fromOwnPointsTransfer;
+	pointsResult.push({
+		fromKey: user.key,
+		points: fromOwnPointsTransfer,
+		epoch,
+	});
+	return pointsResult;
+}
+
+/**
+ * Credits a bundle of points to a user account.
+ * @param user User to credit the points to.
+ * @param points Array containing the points and their sources.
+ * @param epoch Epoch that the assignment is taking place.
+ */
+function creditPoints(user: User, points: UserPoints[], epoch: number) {
+	const userPoints = pointMap.get(user.key) ?? new Map();
+	for (const userPoint of points) {
+		// User will not receive points from themselves
+		if (user.key == userPoint.fromKey || userPoint.points < minPointTransfer) {
+			continue;
+		}
+
+		const result = userPoints.get(userPoint.fromKey) ?? {
+			fromKey: userPoint.fromKey,
+			points: 0,
+			epoch: 0,
+		};
+		result.points += userPoint.points;
+		result.epoch = epoch;
+		userPoints.set(userPoint.fromKey, result);
+	}
+	pointMap.set(user.key, userPoints);
 }
 
 export enum AssignResult {
@@ -92,15 +145,16 @@ export enum AssignResult {
 	ReceiverDoesNotExist,
 	NotEnoughPoints,
 	PointsShouldBePositive,
+	DeductFailed,
 }
 
 function assignPointsWorker(
-	fromKey: string,
-	toKey: string,
+	senderKey: string,
+	receiverKey: string,
 	points: number,
 	epoch: number
 ): AssignResult {
-	if (fromKey == toKey) {
+	if (senderKey == receiverKey) {
 		return AssignResult.CantSendToSelf;
 	}
 
@@ -108,53 +162,32 @@ function assignPointsWorker(
 		return AssignResult.PointsShouldBePositive;
 	}
 
-	const fromUser = getUser(fromKey);
-	const toUser = getUser(toKey);
+	const sender = getUser(senderKey);
+	const receiver = getUser(receiverKey);
 
-	if (!fromUser) {
+	if (!sender) {
 		return AssignResult.SenderDoesNotExist;
 	}
-	if (!toUser) {
+	if (!receiver) {
 		return AssignResult.ReceiverDoesNotExist;
 	}
 
-	const fromUserPoints = pointMap.get(fromKey) ?? new Map();
-	const fromAssignedPoints = tallyPoints(Array.from(fromUserPoints.values()));
-	const fromOwnPoints = fromUser.ownPoints;
-	const fromTotalPoints = fromAssignedPoints + fromOwnPoints;
+	const senderOwnPoints = sender.ownPoints;
+	const senderPoints = getPoints(senderKey);
+	const senderPointTally = tallyPoints(senderPoints);
 
-	if (fromTotalPoints < points) {
+	const senderTotalPoints = senderPointTally + senderOwnPoints;
+
+	if (senderTotalPoints < points) {
 		return AssignResult.NotEnoughPoints;
 	}
 
-	const fromOwnPointsPct = fromOwnPoints / fromTotalPoints;
+	const toCredit = debitPoints(sender, points, epoch);
 
-	// We do a ceiling on own points because this will skew towards transfering
-	// own points instead of received, so we keep more of what we've been sent,
-	// and subtract those that get replenished every epoch.
-	const fromOwnPointsTransfer = Math.ceil(points * fromOwnPointsPct);
-	const fromAssignedPointsTransfer = points - fromOwnPointsTransfer;
-
-	const toUserPoints = pointMap.get(toKey) ?? new Map();
-	const [fromPointsResult, toPointsResult] = transferPoints(
-		toKey,
-		fromAssignedPointsTransfer,
-		fromUserPoints,
-		toUserPoints,
-		epoch
-	);
-	fromUser.ownPoints -= fromOwnPointsTransfer;
-	const fromKeyPoints = toPointsResult.get(fromKey) ?? {
-		fromKey,
-		points: 0,
-		epoch,
-	};
-	fromKeyPoints.points += fromOwnPointsTransfer;
-	toPointsResult.set(fromKey, fromKeyPoints);
-
-	pointMap.set(fromKey, fromPointsResult);
-	pointMap.set(toKey, toPointsResult);
-
+	if (toCredit.length == 0) {
+		return AssignResult.DeductFailed;
+	}
+	creditPoints(receiver, toCredit, epoch);
 	return AssignResult.Ok;
 }
 
