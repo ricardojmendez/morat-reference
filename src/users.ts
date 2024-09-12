@@ -8,8 +8,11 @@ export type User = {
 };
 
 export const MAX_POINTS = 1000;
+export const MORAT_USER = 'morat';
 
 const users: Map<string, User> = new Map();
+
+const blockedUsers: Map<string, Set<string>> = new Map();
 
 export function getUser(id: string): User | undefined {
 	return users.get(id);
@@ -46,10 +49,29 @@ export function userList(): string[] {
 	return Array.from(users.keys());
 }
 
+export function blockUser(blocker: string, blockee: string): void {
+	if (blockee != 'morat') {
+		const blocked = blockedUsers.get(blocker) ?? new Set();
+		blocked.add(blockee);
+		blockedUsers.set(blocker, blocked);
+	}
+}
+
+export function unblockUser(blocker: string, blockee: string): void {
+	const blocked = blockedUsers.get(blocker) ?? new Set();
+	blocked.delete(blockee);
+	blockedUsers.set(blocker, blocked);
+}
+
+export function getBlockedUsers(blocker: string): Set<string> {
+	return blockedUsers.get(blocker) ?? new Set();
+}
+
 /**
  * Clear all users from the system. Used since the state is shared between tests.
  */
 export function clearUsers(): void {
 	users.clear();
+	blockedUsers.clear();
 	createUser('morat', 0);
 }

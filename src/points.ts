@@ -1,4 +1,11 @@
-import { clearUsers, getUser, userList, topUpPoints, User } from './users';
+import {
+	MORAT_USER,
+	clearUsers,
+	getUser,
+	userList,
+	topUpPoints,
+	User,
+} from './users';
 
 export type UserPoints = {
 	fromKey: string;
@@ -18,8 +25,6 @@ type UserPointAssignment = {
 };
 
 export const DECAY_RATE = 0.1; // Every epoch, 10% of the assigned points are lost.
-
-const MORAT_USER = 'morat';
 
 const minPointTransfer = 1;
 const MORAT_PCT = 0.01;

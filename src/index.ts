@@ -1,5 +1,12 @@
 import { Elysia, t } from 'elysia';
-import { createUser, userExists, getUser, userList } from './users';
+import {
+	blockUser,
+	createUser,
+	userExists,
+	getUser,
+	userList,
+	getBlockedUsers,
+} from './users';
 import {
 	assignPoints,
 	AssignResult,
@@ -60,6 +67,18 @@ const app = new Elysia()
 		{
 			params: StringID,
 		}
+	)
+	.get('/block/:blocker', ({ params: { blocker }, error }) =>
+		!userExists(blocker)
+			? error(404, 'User not found')
+			: Array.from(getBlockedUsers(blocker))
+	)
+	.put('/block/:blocker/:blockee', ({ params: { blocker, blockee }, error }) =>
+		!userExists(blocker)
+			? error(404, 'Blocker not found')
+			: !userExists(blockee)
+				? error(404, 'Blockee not found')
+				: blockUser(blocker, blockee)
 	)
 	.get(
 		'/points/:id/detail',
