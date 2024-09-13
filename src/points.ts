@@ -1,6 +1,7 @@
 import {
 	MORAT_USER,
 	clearUsers,
+	getBlockedUsers,
 	getUser,
 	userList,
 	topUpPoints,
@@ -201,7 +202,7 @@ function assignPointsWorker(
 	if (toCredit.length == 0) {
 		return AssignResult.DeductFailed;
 	}
-	if (receiver.optsIn) {
+	if (receiver.optsIn && !getBlockedUsers(receiverKey).has(senderKey)) {
 		creditPoints(receiver, toCredit, epoch);
 	} else {
 		const queued = getQueuedPoints(receiverKey);

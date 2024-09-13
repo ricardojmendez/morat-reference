@@ -65,18 +65,33 @@ On the goals:
 - Someone *could* set up a reputation faucet, but those only need to be identified once for any reputation heuristic that wishes to discount them (given their outputs remain tagged).
 - We can see this offers a measure of Sybil resistance: while someone could set up a group of accounts for a reputation circle-jerk, this would be obvious because 1) reputation origins would tightly cluster, and 2) there would be reputational loss on circular transfers.  It bears further modeling, though.
 
+## Reputation trolling
+
+There is a potential for reputation trolling - eg., a known, hated Nazi gifting you a lot of rep points to be a dick by pretending they like you.
+
+Given these UTXOs will be used to create associations between users, users should be able to reject points sent by a different user.
+
+There are built-in measures to dissuade this:
+
+1. In that scenario, they'd have to spend some of their limited reputation doing that, and it should be fairly obvious to anyone writing a custom reputation heuristic;
+2. There are other solutions as well, such as simply allowing users to opt in before receiving kudos from someone;
+3. Allowing users to opt in also trivially allows for blocking - if I block Stalin, and he tries to send me kudos to pretend we think alike, he loses that reputation share that I never claimed.
+
+The implementation considerations are:
+
+- Rejecting a point assignment happens for for the entire transfer - you don't get to cherry-pick. Otherwise you could say *"I'm happy receiving A&B points from A, but I don't like C".*  If you want to be associated with A, you get all their baggage.
+- This means you don't get to evaluate the point composition - you only get to decide on if you want to be associated with another user.
+- These points should also decay while they are unclaimed - otherwise it lends itself for users to claim a bunch of points at once for a sudden rep boost.
+
+This is the approach that Morat currently takes - if you block Stalin, any points they try to assign to you will end up in an unclaimed limbo, and will not impact your reputation.
+
+You *can* still get some Stalin reputation by association, however - if you associate with someone who is willing to receive kudos from Stalin, and they send you kudos, you may get some Stalin-tagged points yourself. This is intentional. The only way to avoid this is to be mindful of who you opt in to receive reputation from.
+
+
 ## Other considerations
 
-- Given these UTXOs will be used to create associations between users, perhaps users should be able to reject points sent by a different user.
-	- This should be for the entire transfer - you don't get to cherry-pick. Otherwise you could say *"I'm happy receiving A&B points from A, but I don't like C".*  If you want to be associated with A, you get all their baggage.
-	- This means you don't get to evaluate the point composition - you only get to decide on if you want to be associated with another user.
-	- These points should also decay while they are unclaimed - otherwise it lends itself for users to claim a bunch of points at once for a sudden rep boost.
 - There is currently a system user called `morat`, added as an experiment to see what happens if someone were to get a percentage of all system reputation assignments. We also expect this can act as a reputation sink, to further discourage circular assignments. The rules are:
     - It will get 1% of every point assignment;
     - It will never transfer out;
     - We apply a floor to the points, meaning it will not get any reputation boost on assignments of less than 100 points;
     - Its reputation will decay the same as everyone else's.
-- There is a potential for reputation trolling - eg., a known, hated Nazi gifting you a lot of rep points to be a dick.
-	- In that scenario, they'd have to spend some of their limited reputation doing that, and it should be fairly obvious to anyone writing a custom reputation heuristic;
-	- There are other solutions as well, such as simply allowing users to opt in before receiving kudos from someone;
-	- Allowing users to opt in also trivially allows for blocking - if I block Stalin, and he tries to send me kudos to pretend we think alike, he loses that reputation share that I never claimed.

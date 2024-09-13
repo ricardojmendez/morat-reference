@@ -1,5 +1,5 @@
 import { expect, test, describe } from 'bun:test';
-import { createUser, getUser } from '../src/users';
+import { createUser, blockUser, getUser } from '../src/users';
 import {
 	assignPoints,
 	clearPointsAndUsers,
@@ -432,6 +432,126 @@ describe('assign - opt-in', () => {
 						points: 130,
 						epoch: 2,
 					},
+				],
+			},
+		]);
+	});
+});
+
+describe('assign - blocking', () => {
+	test('points from directly blocked users remain unclaimed, even if opted in', () => {
+		clearPointsAndUsers();
+		// Create a few users
+		createUser('alice', 0);
+		createUser('bob', 0);
+		const stalin = createUser('stalin', 0);
+		assignPoints('alice', 'bob', 20, 1);
+		assignPoints('bob', 'stalin', 150, 1);
+
+		// Anti opts in, but hates Stalin
+		const anti = createUser('anti', 1, true);
+		blockUser('anti', 'stalin');
+		const awaitingAntiPre = getQueuedPoints('anti');
+		expect(awaitingAntiPre).toBeEmpty();
+
+		assignPoints('bob', 'anti', 50, 1);
+		const result = assignPoints('stalin', 'anti', 100, 1);
+		expect(result).toBe(AssignResult.Ok);
+		// Sender gets everything deducted from his own points, even if the receiver hasn't claimed them
+		expect(stalin.ownPoints).toBe(912);
+		const stalinPointsPost = getPoints('stalin');
+		expect(stalinPointsPost).toContainValues([
+			{ fromKey: 'alice', points: 1, epoch: 1 },
+			{ fromKey: 'bob', points: 135, epoch: 1 },
+		]);
+
+		// Own points of the receiver do not change
+		expect(anti.ownPoints).toBe(1000);
+		const antiPoints = getPoints('anti');
+		// Anti only has the points bob assigned to them
+		expect(antiPoints).toContainAllValues([
+			{
+				fromKey: 'alice',
+				points: 1,
+				epoch: 1,
+			},
+			{
+				fromKey: 'bob',
+				points: 49,
+				epoch: 1,
+			},
+		]);
+
+		const awaitingAntiPost = getQueuedPoints('anti');
+		expect(awaitingAntiPost).toContainValues([
+			{
+				fromKey: 'stalin',
+				epoch: 1,
+				points: [
+					// Notice that the fractional deducted point from alice gets lost
+					{ fromKey: 'bob', points: 11, epoch: 1 },
+					{ fromKey: 'stalin', points: 87, epoch: 1 },
+				],
+			},
+		]);
+	});
+
+	test('user does get points from blocked users if they are coming from other source', () => {
+		clearPointsAndUsers();
+		// Create a few users
+		createUser('alice', 0);
+		createUser('bob', 0);
+		const stalin = createUser('stalin', 0);
+		createUser('svetlana', 0);
+		assignPoints('alice', 'bob', 20, 1);
+		assignPoints('bob', 'stalin', 300, 1);
+		assignPoints('stalin', 'svetlana', 200, 1);
+
+		// Anti opts in, but hates Stalin
+		const anti = createUser('anti', 1, true);
+		blockUser('anti', 'stalin');
+		const awaitingAntiPre = getQueuedPoints('anti');
+		expect(awaitingAntiPre).toBeEmpty();
+
+		assignPoints('svetlana', 'anti', 25, 1);
+		const result = assignPoints('stalin', 'anti', 200, 1);
+		expect(result).toBe(AssignResult.Ok);
+		// Sender gets everything deducted from his own points, even if the receiver hasn't claimed them
+		expect(stalin.ownPoints).toBe(690);
+		const stalinPointsPost = getPoints('stalin');
+		expect(stalinPointsPost).toContainValues([
+			{ fromKey: 'alice', points: 3, epoch: 1 },
+			{ fromKey: 'bob', points: 202, epoch: 1 },
+		]);
+
+		// Own points of the receiver do not change
+		expect(anti.ownPoints).toBe(1000);
+		const antiPoints = getPoints('anti');
+		// Anti does have a smattering of points from Stalin, because he got them through Svetlana
+		// The only way to not get points from Stalin would be to not associate yourself with
+		// anyone who associates themselves with him.
+		expect(antiPoints).toContainAllValues([
+			{
+				fromKey: 'stalin',
+				points: 3,
+				epoch: 1,
+			},
+			{
+				fromKey: 'svetlana',
+				points: 21,
+				epoch: 1,
+			},
+		]);
+
+		const awaitingAntiPost = getQueuedPoints('anti');
+		expect(awaitingAntiPost).toContainValues([
+			{
+				fromKey: 'stalin',
+				epoch: 1,
+				points: [
+					// Notice that the fractional deducted point from alice gets lost
+					{ fromKey: 'bob', points: 44, epoch: 1 },
+					{ fromKey: 'stalin', points: 153, epoch: 1 },
 				],
 			},
 		]);
