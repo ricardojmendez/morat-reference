@@ -26,6 +26,7 @@ type UserPointAssignment = {
 };
 
 export const DECAY_RATE = 0.1; // Every epoch, 10% of the assigned points are lost.
+export const MAX_EPOCHS_QUEUED = 1 / DECAY_RATE; // How long we will hold points for.
 
 const minPointTransfer = 1;
 const MORAT_PCT = 0.01;
@@ -282,6 +283,23 @@ export function decayPoints(epoch: number) {
 	}
 }
 
+function pruneQueuedPoints(epoch: number) {
+	const keysToDelete = new Set<string>();
+	for (const [key, queued] of queuedAssignments.entries()) {
+		const pruned = queued.filter(
+			(assignment) => epoch - assignment.epoch <= MAX_EPOCHS_QUEUED
+		);
+		if (pruned.length == 0) {
+			keysToDelete.add(key);
+		} else {
+			queuedAssignments.set(key, pruned);
+		}
+	}
+	for (const key of keysToDelete) {
+		queuedAssignments.delete(key);
+	}
+}
+
 export function epochTick(epoch: number): void {
 	for (const key of userList()) {
 		const user = getUser(key);
@@ -290,6 +308,7 @@ export function epochTick(epoch: number): void {
 		}
 	}
 	decayPoints(epoch);
+	pruneQueuedPoints(epoch);
 }
 
 export function getPoints(id: string): UserPoints[] {

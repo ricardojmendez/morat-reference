@@ -608,4 +608,129 @@ describe('epoch tick', () => {
 		const charliePointsPost = getPoints('charlie');
 		expect(tallyPoints(charliePointsPost)).toBe(111);
 	});
+
+	test('unclaimed points do not decay per epoch', () => {
+		clearPointsAndUsers();
+		// Create a few users
+		createUser('alice', 0);
+		createUser('bob', 0);
+		createUser('charlie', 0);
+		assignPoints('alice', 'bob', 100, 1);
+		assignPoints('bob', 'charlie', 150, 1);
+
+		const charliePointsPre = getPoints('charlie');
+		expect(charliePointsPre).toContainValues([
+			{ fromKey: 'alice', points: 13, epoch: 1 },
+			{ fromKey: 'bob', points: 136, epoch: 1 },
+		]);
+
+		// Anti refuses to opt into point assignments
+		createUser('anti', 1, false);
+
+		expect(assignPoints('charlie', 'anti', 100, 1)).toBe(AssignResult.Ok);
+		const awaitingAntiEpoch1 = getQueuedPoints('anti');
+		expect(awaitingAntiEpoch1).toHaveLength(1);
+		expect(awaitingAntiEpoch1).toContainAllValues([
+			{
+				fromKey: 'charlie',
+				epoch: 1,
+				points: [
+					{ fromKey: 'alice', points: 1, epoch: 1 },
+					{ fromKey: 'bob', points: 10, epoch: 1 },
+					{ fromKey: 'charlie', points: 87, epoch: 1 },
+				],
+			},
+		]);
+		epochTick(2);
+		const awaitingAntiEpoch2 = getQueuedPoints('anti');
+		expect(awaitingAntiEpoch2).toContainAllValues(awaitingAntiEpoch1);
+
+		expect(assignPoints('charlie', 'anti', 150, 2)).toBe(AssignResult.Ok);
+		epochTick(3);
+		const antiPoints = getPoints('anti');
+		expect(antiPoints).toBeEmpty();
+		const awaitingAntiEpoch3 = getQueuedPoints('anti');
+
+		expect(awaitingAntiEpoch3).toHaveLength(2);
+		expect(awaitingAntiEpoch3).toContainAllValues([
+			{
+				fromKey: 'charlie',
+				epoch: 1,
+				points: [
+					{ fromKey: 'alice', points: 1, epoch: 1 },
+					{ fromKey: 'bob', points: 10, epoch: 1 },
+					{ fromKey: 'charlie', points: 87, epoch: 1 },
+				],
+			},
+			{
+				fromKey: 'charlie',
+				epoch: 2,
+				points: [
+					{ fromKey: 'alice', points: 1, epoch: 2 },
+					{ fromKey: 'bob', points: 14, epoch: 2 },
+					{ fromKey: 'charlie', points: 133, epoch: 2 },
+				],
+			},
+		]);
+	});
+
+	test('unclaimed points are pruned after a configured number of epochs', () => {
+		clearPointsAndUsers();
+		// Create a few users
+		createUser('alice', 0);
+		createUser('bob', 0);
+		createUser('charlie', 0);
+		assignPoints('alice', 'bob', 100, 1);
+		assignPoints('bob', 'charlie', 150, 1);
+
+		const charliePointsPre = getPoints('charlie');
+		expect(charliePointsPre).toContainValues([
+			{ fromKey: 'alice', points: 13, epoch: 1 },
+			{ fromKey: 'bob', points: 136, epoch: 1 },
+		]);
+
+		// Anti refuses to opt into point assignments
+		createUser('anti', 1, false);
+
+		expect(assignPoints('charlie', 'anti', 100, 1)).toBe(AssignResult.Ok);
+		epochTick(2);
+		expect(assignPoints('charlie', 'anti', 150, 2)).toBe(AssignResult.Ok);
+		epochTick(3);
+		const antiPoints = getPoints('anti');
+		expect(antiPoints).toBeEmpty();
+		const awaitingAntiEpoch3 = getQueuedPoints('anti');
+
+		expect(awaitingAntiEpoch3).toHaveLength(2);
+		expect(awaitingAntiEpoch3).toContainAllValues([
+			{
+				fromKey: 'charlie',
+				epoch: 1,
+				points: [
+					{ fromKey: 'alice', points: 1, epoch: 1 },
+					{ fromKey: 'bob', points: 10, epoch: 1 },
+					{ fromKey: 'charlie', points: 87, epoch: 1 },
+				],
+			},
+			{
+				fromKey: 'charlie',
+				epoch: 2,
+				points: [
+					{ fromKey: 'alice', points: 1, epoch: 2 },
+					{ fromKey: 'bob', points: 14, epoch: 2 },
+					{ fromKey: 'charlie', points: 133, epoch: 2 },
+				],
+			},
+		]);
+
+		// Start ticking epochs and see if they go away
+		epochTick(11);
+		const awaitingAntiEpoch11 = getQueuedPoints('anti');
+		expect(awaitingAntiEpoch11).toContainAllValues(awaitingAntiEpoch3);
+		epochTick(12);
+		const awaitingAntiEpoch12 = getQueuedPoints('anti');
+		expect(awaitingAntiEpoch12).toHaveLength(1);
+		expect(awaitingAntiEpoch12).toContainAllValues(awaitingAntiEpoch3.slice(1));
+		epochTick(13);
+		expect(getQueuedPoints('anti')).toBeEmpty();
+	});
 });
