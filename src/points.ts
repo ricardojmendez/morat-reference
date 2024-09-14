@@ -26,6 +26,7 @@ type UserPointAssignment = {
 };
 
 export const DECAY_RATE = 0.1; // Every epoch, 10% of the assigned points are lost.
+export const MAX_EPOCHS_QUEUED = 1 / DECAY_RATE; // How long we will hold points for.
 
 const minPointTransfer = 1;
 const MORAT_PCT = 0.01;
@@ -163,6 +164,58 @@ export enum AssignResult {
 	DeductFailed,
 }
 
+/**
+ * Credits an unclaimed bundle of points to a user account and modifies the pending claim collection.
+ * @param user User to credit the points to.
+ * @param pointClaimIdx Index on the unclaimed point array to claim
+ * @param epoch Epoch that the assignment is taking place.
+ * @returns AssignResult.DeductFailed if the point claim index is invalid, otherwise AssignResult.Ok
+ */
+export function claimPoints(
+	userKey: string,
+	pointClaimIdx: number,
+	epoch: number
+): AssignResult {
+	const user = getUser(userKey);
+	if (!user) {
+		return AssignResult.ReceiverDoesNotExist;
+	}
+
+	const unclaimedPoints = getQueuedPoints(userKey);
+	if (pointClaimIdx < 0 || pointClaimIdx >= unclaimedPoints.length) {
+		return AssignResult.DeductFailed;
+	}
+
+	const toAssign = unclaimedPoints[pointClaimIdx];
+
+	// Decay the points
+	// Note that this is a quick-and-dirty implementation for testing purposes,
+	// because reducing a value by 40% is not the same as reducing it by 10% four times
+	// applying a floor every time.
+	const epochDecay = Math.min(1, (epoch - toAssign.epoch) * DECAY_RATE);
+
+	if (epochDecay < 1) {
+		const decayed = toAssign.points
+			.map((point) => ({
+				fromKey: point.fromKey,
+				points: Math.floor(point.points * (1 - epochDecay)),
+				epoch: point.epoch,
+			}))
+			.filter((point) => point.points > 0);
+		toAssign.points = decayed;
+		creditPoints(user, toAssign.points, epoch);
+	}
+
+	unclaimedPoints.splice(pointClaimIdx, 1);
+	if (unclaimedPoints.length == 0) {
+		queuedAssignments.delete(userKey);
+	} else {
+		queuedAssignments.set(userKey, unclaimedPoints);
+	}
+
+	return AssignResult.Ok;
+}
+
 function assignPointsWorker(
 	senderKey: string,
 	receiverKey: string,
@@ -282,6 +335,23 @@ export function decayPoints(epoch: number) {
 	}
 }
 
+function pruneQueuedPoints(epoch: number) {
+	const keysToDelete = new Set<string>();
+	for (const [key, queued] of queuedAssignments.entries()) {
+		const pruned = queued.filter(
+			(assignment) => epoch - assignment.epoch <= MAX_EPOCHS_QUEUED
+		);
+		if (pruned.length == 0) {
+			keysToDelete.add(key);
+		} else {
+			queuedAssignments.set(key, pruned);
+		}
+	}
+	for (const key of keysToDelete) {
+		queuedAssignments.delete(key);
+	}
+}
+
 export function epochTick(epoch: number): void {
 	for (const key of userList()) {
 		const user = getUser(key);
@@ -290,6 +360,7 @@ export function epochTick(epoch: number): void {
 		}
 	}
 	decayPoints(epoch);
+	pruneQueuedPoints(epoch);
 }
 
 export function getPoints(id: string): UserPoints[] {
