@@ -32,7 +32,7 @@ I *briefly* considered an AppChain. The overhead and cost currently seem unneces
 - [x] Allow users to keep a list of other blocked users;
 - [x] Allow users to users to opt in to anyone except blocked users;
 - [x] Prune unclaimed points after they would have fully decayed;
-- [ ] Decay unclaimed points on claim - if a point assignment from epoch X gets claimed on X+2, it gets decayed as if it had been assigned on X and then gone through the normal process;
+- [x]] Decay unclaimed points on claim - if a point assignment from epoch X gets claimed on X+2, it gets decayed as if it had been assigned on X and then gone through the normal process;
 
 ### Things to figure out
 

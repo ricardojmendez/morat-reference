@@ -164,6 +164,58 @@ export enum AssignResult {
 	DeductFailed,
 }
 
+/**
+ * Credits an unclaimed bundle of points to a user account and modifies the pending claim collection.
+ * @param user User to credit the points to.
+ * @param pointClaimIdx Index on the unclaimed point array to claim
+ * @param epoch Epoch that the assignment is taking place.
+ * @returns AssignResult.DeductFailed if the point claim index is invalid, otherwise AssignResult.Ok
+ */
+export function claimPoints(
+	userKey: string,
+	pointClaimIdx: number,
+	epoch: number
+): AssignResult {
+	const user = getUser(userKey);
+	if (!user) {
+		return AssignResult.ReceiverDoesNotExist;
+	}
+
+	const unclaimedPoints = getQueuedPoints(userKey);
+	if (pointClaimIdx < 0 || pointClaimIdx >= unclaimedPoints.length) {
+		return AssignResult.DeductFailed;
+	}
+
+	const toAssign = unclaimedPoints[pointClaimIdx];
+
+	// Decay the points
+	// Note that this is a quick-and-dirty implementation for testing purposes,
+	// because reducing a value by 40% is not the same as reducing it by 10% four times
+	// applying a floor every time.
+	const epochDecay = Math.min(1, (epoch - toAssign.epoch) * DECAY_RATE);
+
+	if (epochDecay < 1) {
+		const decayed = toAssign.points
+			.map((point) => ({
+				fromKey: point.fromKey,
+				points: Math.floor(point.points * (1 - epochDecay)),
+				epoch: point.epoch,
+			}))
+			.filter((point) => point.points > 0);
+		toAssign.points = decayed;
+		creditPoints(user, toAssign.points, epoch);
+	}
+
+	unclaimedPoints.splice(pointClaimIdx, 1);
+	if (unclaimedPoints.length == 0) {
+		queuedAssignments.delete(userKey);
+	} else {
+		queuedAssignments.set(userKey, unclaimedPoints);
+	}
+
+	return AssignResult.Ok;
+}
+
 function assignPointsWorker(
 	senderKey: string,
 	receiverKey: string,

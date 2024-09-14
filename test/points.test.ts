@@ -3,6 +3,7 @@ import { createUser, blockUser, getUser } from '../src/users';
 import {
 	assignPoints,
 	clearPointsAndUsers,
+	claimPoints,
 	epochTick,
 	getPoints,
 	getQueuedPoints,
@@ -672,6 +673,89 @@ describe('epoch tick', () => {
 				],
 			},
 		]);
+	});
+
+	test('point are decayed if claimed on a later epoch', () => {
+		clearPointsAndUsers();
+		// Create a few users
+		createUser('alice', 0);
+		createUser('bob', 0);
+		createUser('charlie', 0);
+		assignPoints('alice', 'bob', 100, 1);
+		assignPoints('bob', 'charlie', 150, 1);
+
+		const charliePointsPre = getPoints('charlie');
+		expect(charliePointsPre).toContainValues([
+			{ fromKey: 'alice', points: 13, epoch: 1 },
+			{ fromKey: 'bob', points: 136, epoch: 1 },
+		]);
+
+		// Anti refuses to opt into point assignments
+		createUser('anti', 1, false);
+
+		expect(assignPoints('charlie', 'anti', 100, 1)).toBe(AssignResult.Ok);
+		epochTick(2);
+		expect(assignPoints('charlie', 'anti', 150, 2)).toBe(AssignResult.Ok);
+		epochTick(3);
+		const antiPoints = getPoints('anti');
+		expect(antiPoints).toBeEmpty();
+		const awaitingAntiEpoch3 = getQueuedPoints('anti');
+
+		expect(awaitingAntiEpoch3).toHaveLength(2);
+		expect(awaitingAntiEpoch3).toContainAllValues([
+			{
+				fromKey: 'charlie',
+				epoch: 1,
+				points: [
+					{ fromKey: 'alice', points: 1, epoch: 1 },
+					{ fromKey: 'bob', points: 10, epoch: 1 },
+					{ fromKey: 'charlie', points: 87, epoch: 1 },
+				],
+			},
+			{
+				fromKey: 'charlie',
+				epoch: 2,
+				points: [
+					{ fromKey: 'alice', points: 1, epoch: 2 },
+					{ fromKey: 'bob', points: 14, epoch: 2 },
+					{ fromKey: 'charlie', points: 133, epoch: 2 },
+				],
+			},
+		]);
+
+		// Attempting to claim non-existend index fais
+		expect(claimPoints('anti', 3, 3)).toEqual(AssignResult.DeductFailed);
+
+		// Claim the second set of points on epoch 4
+		expect(claimPoints('anti', 1, 4)).toEqual(AssignResult.Ok);
+		// Since they were claimed quickly, they have only decayed 20%
+		expect(getPoints('anti')).toContainAllValues([
+			{ fromKey: 'bob', points: 11, epoch: 4 },
+			{ fromKey: 'charlie', points: 106, epoch: 4 },
+		]);
+		const awaitingAntiEpoch4 = getQueuedPoints('anti');
+		expect(awaitingAntiEpoch4).toHaveLength(1);
+		expect(awaitingAntiEpoch4).toContainAllValues([
+			{
+				fromKey: 'charlie',
+				epoch: 1,
+				points: [
+					{ fromKey: 'alice', points: 1, epoch: 1 },
+					{ fromKey: 'bob', points: 10, epoch: 1 },
+					{ fromKey: 'charlie', points: 87, epoch: 1 },
+				],
+			},
+		]);
+
+		// Claim the first set of points on epoch 8
+		expect(claimPoints('anti', 0, 8)).toEqual(AssignResult.Ok);
+		// Since they were claimed quickly, they have only decayed 20%
+		expect(getPoints('anti')).toContainAllValues([
+			{ fromKey: 'bob', points: 13, epoch: 8 },
+			{ fromKey: 'charlie', points: 132, epoch: 8 },
+		]);
+		// No unclaimed points left
+		expect(getQueuedPoints('anti')).toBeEmpty();
 	});
 
 	test('unclaimed points are pruned after a configured number of epochs', () => {
