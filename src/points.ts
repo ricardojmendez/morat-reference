@@ -28,7 +28,7 @@ type UserPointAssignment = {
 export const DECAY_RATE = 0.1; // Every epoch, 10% of the assigned points are lost.
 export const MAX_EPOCHS_QUEUED = 1 / DECAY_RATE; // How long we will hold points for.
 
-const minPointTransfer = 1;
+const MIN_POINT_TRANSFER = 1;
 const MORAT_PCT = 0.01;
 
 const pointMap: Map<string, UserPointsMap> = new Map();
@@ -102,7 +102,7 @@ function debitPoints(user: User, total: number, epoch: number): UserPoints[] {
 
 			// We don't allow points transfer from one user to the themselves, or a transfer below the minimum,
 			// but the sender can lose the points.
-			if (pointsToTransfer < minPointTransfer) {
+			if (pointsToTransfer < MIN_POINT_TRANSFER) {
 				continue;
 			}
 
@@ -138,7 +138,10 @@ function creditPoints(user: User, points: UserPoints[], epoch: number) {
 	const userPoints = pointMap.get(user.key) ?? new Map();
 	for (const userPoint of points) {
 		// User will not receive points from themselves
-		if (user.key == userPoint.fromKey || userPoint.points < minPointTransfer) {
+		if (
+			user.key == userPoint.fromKey ||
+			userPoint.points < MIN_POINT_TRANSFER
+		) {
 			continue;
 		}
 
