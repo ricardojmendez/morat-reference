@@ -44,6 +44,11 @@ export function clearPointsAndUsers() {
 	queuedAssignments.clear();
 }
 
+/**
+ * Adds up all points from a UserPoints array
+ * @param userPoints UserPoints to tally up
+ * @returns Total accumulated points
+ */
 export function tallyPoints(userPoints: UserPoints[]): number {
 	return userPoints.reduce((acc, { points }) => acc + points, 0);
 }
