@@ -9,6 +9,7 @@ import {
 } from './users';
 import {
 	assignPoints,
+	claimPoints,
 	AssignResult,
 	epochTick,
 	getPoints,
@@ -29,6 +30,14 @@ let currentEpoch = 0;
 
 const StringID = t.Object({
 	id: t.String(),
+});
+
+const UserBody = t.Object({
+	optsIn: t.Optional(t.Boolean()),
+});
+
+const ClaimBody = t.Object({
+	index: t.Number(),
 });
 
 const app = new Elysia()
@@ -60,12 +69,15 @@ const app = new Elysia()
 	)
 	.post(
 		'/user/:id',
-		({ params: { id }, error }) =>
-			userExists(id)
+		async ({ body, params: { id }, error }) => {
+			const { optsIn } = body ?? {};
+			return userExists(id)
 				? error(409, 'User already exists')
-				: createUser(id, currentEpoch),
+				: createUser(id, currentEpoch, optsIn ?? true);
+		},
 		{
 			params: StringID,
+			body: t.Optional(UserBody),
 		}
 	)
 	.get('/block/:blocker', ({ params: { blocker }, error }) =>
@@ -130,6 +142,20 @@ const app = new Elysia()
 				to: t.String(),
 				points: t.Number(),
 			}),
+		}
+	)
+	.put(
+		'/points/claim/:id',
+		({ params: { id }, body, error }) => {
+			const { index } = body;
+			const result = claimPoints(id, index, currentEpoch);
+			return result == AssignResult.Ok
+				? { success: true }
+				: error(400, `Invalid points claim: ${result}`);
+		},
+		{
+			params: StringID,
+			body: ClaimBody,
 		}
 	)
 	.get('/epoch', () => currentEpoch)

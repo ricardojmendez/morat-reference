@@ -42,18 +42,22 @@
 		<h1>Point tally</h1>
 		<div id="app">
 			<div id="current-epoch">Epoch: {{ epoch }}</div>
+			<div>Agents with an * opt out and may get their points manually</div>
 			<div id="agent-list">
 				<table v-if="agents.length">
 					<thead>
 						<tr>
 							<th>Agent</th>
-							<th>Assigned / To Assign</th>
+							<th>Assigned / Raw</th>
 							<th>Detail</th>
 						</tr>
 					</thead>
 					<tbody>
 						<tr v-for="agent in agents" :key="agent.name">
-							<td>{{ agent.name }}</td>
+							<td>
+								{{ agent.name }}
+								<span class="small-text" v-if="!agent.optsIn">(*)</span>
+							</td>
 							<td>
 								{{ agent.points.assigned }}
 								<span class="small-text">({{ agent.points.own }})</span>
@@ -82,36 +86,35 @@
 				methods: {
 					async fetchAgentData() {
 						try {
-							const epochResponse = await fetch('http://localhost:3000/epoch', {
+							const epochResponse = await fetch('/epoch', {
 								method: 'GET',
 							});
 							const epoch = await epochResponse.json();
 							this.epoch = epoch;
 
-							const response = await fetch('http://localhost:3000/user', {
+							const response = await fetch('/user', {
 								method: 'GET',
 							});
 							const agentNames = await response.json();
 
 							const agents = [];
-							for (const agent of agentNames) {
-								const agentResp = await fetch(
-									`http://localhost:3000/points/${agent}/tally`,
-									{
-										method: 'GET',
-									}
-								);
-								const agentPoints = await agentResp.json();
-								const getDetail = await fetch(
-									`http://localhost:3000/points/${agent}/detail`,
-									{
-										method: 'GET',
-									}
-								);
+							for (const name of agentNames) {
+								const agentResp = await fetch(`/user/${name}`, {
+									method: 'GET',
+								});
+								const agent = await agentResp.json();
+								const tallyResp = await fetch(`/points/${name}/tally`, {
+									method: 'GET',
+								});
+								const agentPoints = await tallyResp.json();
+								const getDetail = await fetch(`/points/${name}/detail`, {
+									method: 'GET',
+								});
 								const agentDetail = await getDetail.json();
 								agents.push({
-									name: agent,
+									name: name,
 									points: agentPoints,
+									optsIn: agent.optsIn,
 									detail: agentDetail
 										.sort((a, b) => b.points - a.points)
 										.map((d) => `${d.fromKey}: ${d.points}`)
