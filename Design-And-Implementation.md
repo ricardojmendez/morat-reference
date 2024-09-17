@@ -1,6 +1,6 @@
 ## Design considerations
 
-## v0.2.0 (initial notes)
+## v0.2.0
 
 Given the fact that this will require a large number of accounts, I thought about using zkcompression, where accounts are much cheaper to create (they use ledger storage). That however only delays the cost.
 

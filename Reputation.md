@@ -4,11 +4,11 @@
 
 Primarily:
 
-- Have a reputation system that indicates how much trust does someone have in a community, dependent on members you might trust (since trust is relative).
+- Have a reputation system that indicates how much trust does someone have in a community. 
 - Have the system be easily quantifiable.
+- Do not provide a single view of the world, or what could be considered a "high score problem" - someone having a lot of kudos doesn't mean that *you* should trust them (trust is relative, and it might depend on if you trust people who trust them).
 - Avoid reputation points to become an easily-tradeable currency - they should not be money.
 - Let this reputation decay with time - someone doing something popular at some point in the far past doesn't mean that reputation should carry forward.
-- Do not provide a single view of the world, on what could be considered a "high score problem" - someone having a lot of points doesn't mean that *you* should trust them.
 
 The last two are particularly important - while *Down And Out In the Magic Kingdom*'s Whuffie sounded like a fun idea when I first encountered it, there are a lot of aspects of it I can see that would be an issue after seeing years of behavior in the crypto space:
 
@@ -26,13 +26,13 @@ I'll focus this basic draft on describing an approach to solve the primary goals
 
 ## Method
  
-- Every user gets a certain number of unassigned points every epoch - let's go with 100 weekly points for the example.
+- Every user gets a certain number of raw, unassigned points every epoch - let's go with 100 weekly points for the example.
 - Any points a user spends during that week get replenished at the start of the next epoch.
 - A user can send points to another user at any moment.
 - A user can hold a combination of source points (up to his maximum for that epoch) and points they have received from other users. Only points received from users are likely to be considered for reputation score.
-- When user A sends points to user B, they are a proportional combination of source points, and the points they received from other users.
+- When user A sends points to user B, what B receives is a proportional combination of "raw" unassigned points that A holds, and the points that A has received from other users.
 - Point assignments cannot be taken back.
-- The points a user sends from their source are tagged with the origin user's address; the points he got from other users retain their original tag.
+- When a user gets points from another: the source pointers from the sender are tagged with them as the origin; the points the sender got from other users and then forwarded retain their original tag.
 - Assigned point fractions below a certain minimum threshold are garbage-collected.
 - A user cannot receive back points tagged with their own source - those are discarded.
 
@@ -58,7 +58,7 @@ On the goals:
 
 - We can see this is similar to an UTXO system, with some constraints (there are rules on how things are transferred and choice is not arbitrary).
 - Given these are UTXOs, and the amounts are always accounted for and controlled by the contract, decaying them through time by any desirable measure becomes easier (even if the UTXO approach adds overhead once the network grows, because the outputs aren't collapsible.)
-- The fact that they are UTXOs and tracked individually has an added advantage: there is no single "reputation score" tally for a user, and anyone could write their own reputation heuristic based on the raw data (potentially even considering transfer history or deciding to discounts point from a source).
+- The fact that they are UTXOs and tracked individually has an added advantage: there is no single "reputation score" tally for a user, and anyone could write their own reputation heuristic for user A based on the raw data of assigned points for A (potentially even considering transfer history or deciding to discounts point from a source).
 - Having multiple reputation heuristics available would ideally further discourage people viewing this as money or as a fixed score to be maximized, thus helping defuse the extrinsic reward threat.
 - One could argue that on step 5 above it is unfair that A gets the full 50 point deduction while D only receives 48. That is OK. The points are meant to represent weight in the community at large - a recurrent closed loop of mutual backpatting may have value for the individuals, but means little for the group.
 - The fact points are potentially lost in a transfer also discourages users of thinking of these as money, or trying to add financial primitives on top. The contract will always control assignment, so users couldn't transfer them arbitrarily like they can transfer an SPL token. However, I could see a primitive where a bot acting as a pool controls a large volume of kudos, and users attempt to trade with it via side channels. The fact no user can be guaranteed to get an exact allocation will introduce a fuzziness to such a trade that should discourage it.
@@ -79,8 +79,8 @@ There are built-in measures to dissuade this:
 
 The implementation considerations are:
 
-- Rejecting a point assignment happens for for the entire transfer - you don't get to cherry-pick. Otherwise you could say *"I'm happy receiving A&B points from A, but I don't like C".*  If you want to be associated with A, you get all their baggage.
-- This means you don't get to evaluate the point composition - you only get to decide on if you want to be associated with another user.
+- Rejecting a point assignment happens for the entire transfer - you don't get to cherry-pick. Otherwise you could say *"I'm happy receiving A&B points from A, but exclude any C points that A tried to send"*.  If you want to be associated with A, you get all their baggage.
+- This means you don't get to alter the point composition - you only get to decide on if you want to be associated with A at all.
 - These points should also decay while they are unclaimed - otherwise it lends itself for users to claim a bunch of points at once for a sudden rep boost.
 
 This is the approach that Morat currently takes - if you block Stalin, any points they try to assign to you will end up in an unclaimed limbo, and will not impact your reputation.
