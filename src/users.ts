@@ -32,7 +32,7 @@ export function createUser(
 	const user = {
 		key: id,
 		epochSignUp: currentEpoch,
-		ownPoints: 1000,
+		ownPoints: MAX_POINTS,
 		createDate: Date.now(),
 		timestamp: Date.now(),
 		optsIn,
