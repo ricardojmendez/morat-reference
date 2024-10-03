@@ -52,7 +52,10 @@ const app = new Elysia()
 		}
 		return htmlContent;
 	})
-	.get('/user', () => userList())
+	.get('/user', ({ query }) => {
+		const { all } = query;
+		return userList(all === 'true');
+	})
 	.get(
 		'/user/:encodedId',
 		({ params: { encodedId }, error }) => {

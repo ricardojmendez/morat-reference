@@ -1,3 +1,5 @@
+import { getPoints } from './points';
+
 export type User = {
 	key: string;
 	epochSignUp: number;
@@ -45,8 +47,12 @@ export function userExists(id: string): boolean {
 	return users.has(id);
 }
 
-export function userList(): string[] {
-	return Array.from(users.keys());
+export function userList(all = true): string[] {
+	const allUsers = Array.from(users.keys());
+	const result = all
+		? allUsers
+		: allUsers.filter((user) => getPoints(user).length > 0);
+	return result;
 }
 
 export function blockUser(blocker: string, blockee: string): void {
