@@ -184,22 +184,6 @@ console.log(`Creating sample data...`);
 
 const serverPath = `http://${app.server?.hostname}:${app.server?.port}`;
 app.handle(new Request(`${serverPath}/user/morat`, { method: 'POST' }));
-app.handle(new Request(`${serverPath}/user/alice`, { method: 'POST' }));
-app.handle(new Request(`${serverPath}/epoch/tick`, { method: 'POST' }));
-app.handle(new Request(`${serverPath}/user/bob`, { method: 'POST' }));
-app.handle(new Request(`${serverPath}/epoch/tick`, { method: 'POST' }));
-app.handle(new Request(`${serverPath}/user/charlie`, { method: 'POST' }));
-app.handle(
-	new Request(`${serverPath}/points/transfer/charlie/alice/20`, {
-		method: 'PUT',
-	})
-);
-app.handle(
-	new Request(`${serverPath}/points/transfer/alice/bob/10`, { method: 'PUT' })
-);
-app
-	.handle(new Request(`${serverPath}/epoch/tick`, { method: 'POST' }))
-	.then(console.log);
 
 console.log(`🦊 Elysia is running at ${serverPath}`);
 
