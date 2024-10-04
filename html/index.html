@@ -77,14 +77,20 @@
 					return {
 						epoch: 'Loading...',
 						agents: [],
+						loading: false,
 					};
 				},
 				created() {
 					this.fetchAgentData();
-					setInterval(this.fetchAgentData, 1000);
+					setInterval(this.fetchAgentData, 5000);
 				},
 				methods: {
 					async fetchAgentData() {
+						if (this.loading) {
+							return;
+						}
+						this.loading = true;
+						const isFirstLoad = this.agents.length === 0;
 						try {
 							const epochResponse = await fetch('/epoch', {
 								method: 'GET',
@@ -92,13 +98,14 @@
 							const epoch = await epochResponse.json();
 							this.epoch = epoch;
 
-							const response = await fetch('/user', {
+							const response = await fetch('/user?all=false', {
 								method: 'GET',
 							});
 							const agentNames = await response.json();
 
-							const agents = [];
-							for (const name of agentNames) {
+							const updatedAgents = [];
+
+							const loadAgent = async (name) => {
 								const agentResp = await fetch(`/user/${name}`, {
 									method: 'GET',
 								});
@@ -111,7 +118,7 @@
 									method: 'GET',
 								});
 								const agentDetail = await getDetail.json();
-								agents.push({
+								const agentRecord = {
 									name: name,
 									points: agentPoints,
 									optsIn: agent.optsIn,
@@ -119,12 +126,42 @@
 										.sort((a, b) => b.points - a.points)
 										.map((d) => `${d.fromKey}: ${d.points}`)
 										.join(' | '),
+								};
+								updatedAgents.push(agentRecord);
+								if (isFirstLoad) {
+									this.agents.push(agentRecord);
+								}
+							};
+							await Promise.all(agentNames.map(loadAgent));
+
+							if (!isFirstLoad) {
+								// Update existing agents and add new ones
+								this.agents = this.agents.filter((agent) => {
+									const updatedAgent = updatedAgents.find(
+										(a) => a.name === agent.name
+									);
+									if (updatedAgent) {
+										Object.assign(agent, updatedAgent);
+										return true;
+									}
+									return false;
+								});
+
+								// Add new agents that were not in the original list
+								updatedAgents.forEach((updatedAgent) => {
+									if (
+										!this.agents.find(
+											(agent) => agent.name === updatedAgent.name
+										)
+									) {
+										this.agents.push(updatedAgent);
+									}
 								});
 							}
-							this.agents = agents;
 						} catch (error) {
 							console.error('Failed to fetch agent data:', error);
 						}
+						this.loading = false;
 					},
 				},
 			}).mount('#app');

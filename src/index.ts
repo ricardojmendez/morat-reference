@@ -29,7 +29,7 @@ const EPOCH_SECONDS = 10;
 let currentEpoch = 0;
 
 const StringID = t.Object({
-	id: t.String(),
+	encodedId: t.String(),
 });
 
 const UserBody = t.Object({
@@ -52,10 +52,14 @@ const app = new Elysia()
 		}
 		return htmlContent;
 	})
-	.get('/user', () => userList())
+	.get('/user', ({ query }) => {
+		const { all } = query;
+		return userList(all === 'true');
+	})
 	.get(
-		'/user/:id',
-		({ params: { id }, error }) => {
+		'/user/:encodedId',
+		({ params: { encodedId }, error }) => {
+			const id = decodeURIComponent(encodedId);
 			const user = getUser(id);
 			if (!user) {
 				return error(404, 'User not found');
@@ -68,8 +72,9 @@ const app = new Elysia()
 		}
 	)
 	.post(
-		'/user/:id',
-		async ({ body, params: { id }, error }) => {
+		'/user/:encodedId',
+		({ body, params: { encodedId }, error }) => {
+			const id = decodeURIComponent(encodedId);
 			const { optsIn } = body ?? {};
 			return userExists(id)
 				? error(409, 'User already exists')
@@ -80,21 +85,28 @@ const app = new Elysia()
 			body: t.Optional(UserBody),
 		}
 	)
-	.get('/block/:blocker', ({ params: { blocker }, error }) =>
-		!userExists(blocker)
+	.get('/block/:encodedId', ({ params: { encodedId }, error }) => {
+		const blocker = decodeURIComponent(encodedId);
+		return !userExists(blocker)
 			? error(404, 'User not found')
-			: Array.from(getBlockedUsers(blocker))
-	)
-	.put('/block/:blocker/:blockee', ({ params: { blocker, blockee }, error }) =>
-		!userExists(blocker)
-			? error(404, 'Blocker not found')
-			: !userExists(blockee)
-				? error(404, 'Blockee not found')
-				: blockUser(blocker, blockee)
+			: Array.from(getBlockedUsers(blocker));
+	})
+	.put(
+		'/block/:encodedBlocker/:encodedBlockee',
+		({ params: { encodedBlocker, encodedBlockee }, error }) => {
+			const blocker = decodeURIComponent(encodedBlocker);
+			const blockee = decodeURIComponent(encodedBlockee);
+			return !userExists(blocker)
+				? error(404, 'Blocker not found')
+				: !userExists(blockee)
+					? error(404, 'Blockee not found')
+					: blockUser(blocker, blockee);
+		}
 	)
 	.get(
-		'/points/:id/detail',
-		({ params: { id }, error }) => {
+		'/points/:encodedId/detail',
+		({ params: { encodedId }, error }) => {
+			const id = decodeURIComponent(encodedId);
 			const userPoints = getPoints(id);
 			if (!userPoints) {
 				return error(404, 'User not found or they have no points');
@@ -107,8 +119,9 @@ const app = new Elysia()
 		}
 	)
 	.get(
-		'/points/:id/tally',
-		({ params: { id }, error }) => {
+		'/points/:encodedId/tally',
+		({ params: { encodedId }, error }) => {
+			const id = decodeURIComponent(encodedId);
 			const user = getUser(id);
 			if (!user) {
 				return error(404, 'User not found');
@@ -128,8 +141,10 @@ const app = new Elysia()
 		}
 	)
 	.put(
-		'/points/transfer/:from/:to/:points',
-		({ params: { from, to, points }, error }) => {
+		'/points/transfer/:encodedFrom/:encodedTo/:points',
+		({ params: { encodedFrom, encodedTo, points }, error }) => {
+			const from = decodeURIComponent(encodedFrom);
+			const to = decodeURIComponent(encodedTo);
 			const success = assignPoints(from, to, points, currentEpoch);
 			if (success != AssignResult.Ok) {
 				return error(400, `Invalid points transfer: ${success}`);
@@ -138,15 +153,16 @@ const app = new Elysia()
 		},
 		{
 			params: t.Object({
-				from: t.String(),
-				to: t.String(),
+				encodedFrom: t.String(),
+				encodedTo: t.String(),
 				points: t.Number(),
 			}),
 		}
 	)
 	.put(
-		'/points/claim/:id',
-		({ params: { id }, body, error }) => {
+		'/points/claim/:encodedId',
+		({ params: { encodedId }, body, error }) => {
+			const id = decodeURIComponent(encodedId);
 			const { index } = body;
 			const result = claimPoints(id, index, currentEpoch);
 			return result == AssignResult.Ok
@@ -171,22 +187,6 @@ console.log(`Creating sample data...`);
 
 const serverPath = `http://${app.server?.hostname}:${app.server?.port}`;
 app.handle(new Request(`${serverPath}/user/morat`, { method: 'POST' }));
-app.handle(new Request(`${serverPath}/user/alice`, { method: 'POST' }));
-app.handle(new Request(`${serverPath}/epoch/tick`, { method: 'POST' }));
-app.handle(new Request(`${serverPath}/user/bob`, { method: 'POST' }));
-app.handle(new Request(`${serverPath}/epoch/tick`, { method: 'POST' }));
-app.handle(new Request(`${serverPath}/user/charlie`, { method: 'POST' }));
-app.handle(
-	new Request(`${serverPath}/points/transfer/charlie/alice/20`, {
-		method: 'PUT',
-	})
-);
-app.handle(
-	new Request(`${serverPath}/points/transfer/alice/bob/10`, { method: 'PUT' })
-);
-app
-	.handle(new Request(`${serverPath}/epoch/tick`, { method: 'POST' }))
-	.then(console.log);
 
 console.log(`🦊 Elysia is running at ${serverPath}`);
 
