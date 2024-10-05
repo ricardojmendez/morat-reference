@@ -64,7 +64,7 @@ async function debitPoints(
 	user: User,
 	total: bigint,
 	epoch: bigint
-): UserPoints[] {
+): Promise<UserPoints[]> {
 	const senderOwnPoints = Number(user.ownPoints);
 	const senderPoints = getPoints(user.key);
 	const senderPointTally = Number(tallyPoints(senderPoints));
@@ -274,7 +274,8 @@ async function assignPointsWorker(
 	if (toCredit.length == 0) {
 		return AssignResult.DeductFailed;
 	}
-	if (receiver.optsIn && !getBlockedUsers(receiverKey).has(senderKey)) {
+	const blockedUsers = await getBlockedUsers(receiverKey);
+	if (receiver.optsIn && !blockedUsers.has(senderKey)) {
 		creditPoints(receiver, toCredit, epoch);
 	} else {
 		const queued = getQueuedPoints(receiverKey);

@@ -27,17 +27,18 @@ model User {
 }
 
 model BlockList {
-    blocker   User   @relation(fields: [blockerId], references: [key], name: "blocker")
-    blocked   User   @relation(fields: [blockedId], references: [key], name: "blocked")
+    blocker   User     @relation(fields: [blockerId], references: [key], name: "blocker", onDelete: Cascade)
+    blocked   User     @relation(fields: [blockedId], references: [key], name: "blocked", onDelete: Cascade)
     blockerId String
     blockedId String
+    blockedAt DateTime @default(now())
 
     @@id([blockerId, blockedId])
 }
 
 model UserPoints {
-    owner    User @relation(fields: [ownerId], references: [key], name: "owner")
-    assigner User @relation(fields: [assignerId], references: [key], name: "assigner")
+    owner    User   @relation(fields: [ownerId], references: [key], name: "owner")
+    assigner User   @relation(fields: [assignerId], references: [key], name: "assigner")
     points   BigInt
     epoch    BigInt
 

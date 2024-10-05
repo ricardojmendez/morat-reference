@@ -25,7 +25,7 @@ describe('creation', () => {
 
 	test('create a user', async () => {
 		const user = await createUser('test-user', 1n);
-        expect(user).toBeDefined();
+		expect(user).toBeDefined();
 		expect(user?.epochSignUp).toBe(1n);
 		expect(user?.ownPoints).toBe(1000n);
 		expect(user?.key).toBe('test-user');
@@ -72,7 +72,7 @@ describe('blocking', () => {
 	test('no blocked users by default', async () => {
 		await clearUsers();
 		await createUser('jane', 1n);
-		const blocked = getBlockedUsers('jane');
+		const blocked = await getBlockedUsers('jane');
 		expect(blocked).toBeEmpty();
 	});
 
@@ -80,9 +80,10 @@ describe('blocking', () => {
 		await clearUsers();
 		await createUser('jane', 1n);
 		await createUser('troll', 0n);
-		blockUser('jane', 'troll');
-		blockUser('jane', 'nazi');
-		const blocked = getBlockedUsers('jane');
+		await createUser('nazi', 2n);
+		await blockUser('jane', 'troll');
+		await blockUser('jane', 'nazi');
+		const blocked = await getBlockedUsers('jane');
 		expect(blocked).toHaveLength(2);
 		expect(blocked).toContain('troll');
 		expect(blocked).toContain('nazi');
@@ -92,9 +93,9 @@ describe('blocking', () => {
 		await clearUsers();
 		await createUser('troll', 0n);
 		await createUser('jane', 1n);
-		blockUser('jane', 'troll');
-		blockUser('jane', 'morat');
-		const blocked = getBlockedUsers('jane');
+		await blockUser('jane', 'troll');
+		await blockUser('jane', 'morat');
+		const blocked = await getBlockedUsers('jane');
 		expect(blocked).toHaveLength(1);
 		expect(blocked).not.toContain('morat');
 	});
@@ -103,13 +104,14 @@ describe('blocking', () => {
 		await clearUsers();
 		await createUser('jane', 1n);
 		await createUser('troll', 0n);
-		blockUser('jane', 'troll');
-		blockUser('jane', 'mistake');
-		const blockedPre = getBlockedUsers('jane');
+		await createUser('mistake', 2n);
+		await blockUser('jane', 'troll');
+		await blockUser('jane', 'mistake');
+		const blockedPre = await getBlockedUsers('jane');
 		expect(blockedPre).toHaveLength(2);
-		unblockUser('jane', 'mistake');
+		await unblockUser('jane', 'mistake');
 		// Yeah, we could just keep the const because it's altered in-place, but let's not assume
-		const blockedPost = getBlockedUsers('jane');
+		const blockedPost = await getBlockedUsers('jane');
 		expect(blockedPost).toHaveLength(1);
 		expect(blockedPost).not.toContain('mistake');
 	});
@@ -118,13 +120,14 @@ describe('blocking', () => {
 		await clearUsers();
 		await createUser('jane', 1n);
 		await createUser('troll', 0n);
-		blockUser('jane', 'troll');
-		blockUser('jane', 'mistake');
-		const blockedPre = getBlockedUsers('jane');
+		await createUser('mistake', 2n);
+		await blockUser('jane', 'troll');
+		await blockUser('jane', 'mistake');
+		const blockedPre = await getBlockedUsers('jane');
 		expect(blockedPre).toHaveLength(2);
 		expect(blockedPre).not.toContain('jill');
-		unblockUser('jane', 'jill');
-		const blockedPost = getBlockedUsers('jane');
+		await unblockUser('jane', 'jill');
+		const blockedPost = await getBlockedUsers('jane');
 		expect(blockedPost).toHaveLength(2);
 		expect(blockedPost).not.toContain('jill');
 	});

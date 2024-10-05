@@ -13,8 +13,6 @@ export type User = {
 export const MAX_POINTS = 1000n;
 export const MORAT_USER = 'morat';
 
-const blockedUsers: Map<string, Set<string>> = new Map();
-
 export async function getUser(id: string): Promise<User | null> {
 	return await prisma.user.findUnique({ where: { key: id } });
 }
@@ -66,22 +64,45 @@ export async function userList(all = true): Promise<string[]> {
 	return result;
 }
 
-export function blockUser(blocker: string, blockee: string): void {
+export async function blockUser(blocker: string, blockee: string) {
 	if (blockee != 'morat') {
-		const blocked = blockedUsers.get(blocker) ?? new Set();
-		blocked.add(blockee);
-		blockedUsers.set(blocker, blocked);
+		const blockerUser = await getUser(blocker);
+		const blockedUser = await getUser(blockee);
+		if (!blockerUser || !blockedUser) {
+			return;
+		}
+
+		const existingBlock = await prisma.blockList.findFirst({
+			where: {
+				blockerId: blocker,
+				blockedId: blockee,
+			},
+		});
+		if (!existingBlock) {
+			await prisma.blockList.create({
+				data: {
+					blockerId: blocker,
+					blockedId: blockee,
+				},
+			});
+		}
 	}
 }
 
-export function unblockUser(blocker: string, blockee: string): void {
-	const blocked = blockedUsers.get(blocker) ?? new Set();
-	blocked.delete(blockee);
-	blockedUsers.set(blocker, blocked);
+export async function unblockUser(blocker: string, blockee: string) {
+	await prisma.blockList.deleteMany({
+		where: { blockerId: blocker, blockedId: blockee },
+	});
 }
 
-export function getBlockedUsers(blocker: string): Set<string> {
-	return blockedUsers.get(blocker) ?? new Set();
+export async function getBlockedUsers(blocker: string): Promise<Set<string>> {
+	const list = (
+		await prisma.blockList.findMany({
+			where: { blockerId: blocker },
+			select: { blockedId: true },
+		})
+	).map((block) => block.blockedId);
+	return new Set(list);
 }
 
 /**
@@ -89,6 +110,5 @@ export function getBlockedUsers(blocker: string): Set<string> {
  */
 export async function clearUsers() {
 	await prisma.user.deleteMany({});
-	blockedUsers.clear();
 	await createUser('morat', 0n);
 }

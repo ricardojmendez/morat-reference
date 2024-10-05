@@ -85,11 +85,11 @@ const app = new Elysia()
 			body: t.Optional(UserBody),
 		}
 	)
-	.get('/block/:encodedId', ({ params: { encodedId }, error }) => {
+	.get('/block/:encodedId', async ({ params: { encodedId }, error }) => {
 		const blocker = decodeURIComponent(encodedId);
 		return !userExists(blocker)
 			? error(404, 'User not found')
-			: Array.from(getBlockedUsers(blocker));
+			: Array.from(await getBlockedUsers(blocker));
 	})
 	.put(
 		'/block/:encodedBlocker/:encodedBlockee',
