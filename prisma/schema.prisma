@@ -1,0 +1,48 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+model User {
+    key         String       @id
+    epochSignUp BigInt
+    ownPoints   BigInt
+    createDate  BigInt
+    timestamp   BigInt
+    optsIn      Boolean      @default(true)
+    blocks      BlockList[]  @relation("blocker")
+    blocked     BlockList[]  @relation("blocked")
+    points      UserPoints[] @relation("owner")
+    assigned    UserPoints[] @relation("assigner")
+}
+
+model BlockList {
+    blocker   User   @relation(fields: [blockerId], references: [key], name: "blocker")
+    blocked   User   @relation(fields: [blockedId], references: [key], name: "blocked")
+    blockerId String
+    blockedId String
+
+    @@id([blockerId, blockedId])
+}
+
+model UserPoints {
+    owner    User @relation(fields: [ownerId], references: [key], name: "owner")
+    assigner User @relation(fields: [assignerId], references: [key], name: "assigner")
+    points   BigInt
+    epoch    BigInt
+
+    ownerId    String
+    assignerId String
+
+    @@id([ownerId, assignerId])
+}

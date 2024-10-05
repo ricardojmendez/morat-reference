@@ -1,57 +1,68 @@
 import { getPoints } from './points';
+import { prisma } from './prisma';
 
 export type User = {
 	key: string;
-	epochSignUp: number;
-	ownPoints: number;
-	createDate: number;
-	timestamp: number;
+	epochSignUp: bigint;
+	ownPoints: bigint;
+	createDate: bigint;
+	timestamp: bigint;
 	optsIn: boolean;
 };
 
-export const MAX_POINTS = 1000;
+export const MAX_POINTS = 1000n;
 export const MORAT_USER = 'morat';
-
-const users: Map<string, User> = new Map();
 
 const blockedUsers: Map<string, Set<string>> = new Map();
 
-export function getUser(id: string): User | undefined {
-	return users.get(id);
+export async function getUser(id: string): Promise<User | null> {
+	return await prisma.user.findUnique({ where: { key: id } });
 }
 
-export function topUpPoints(user: User, _epoch: number): User {
-	user.ownPoints = MAX_POINTS;
-	users.set(user.key, user);
-	return user;
+export async function topUpPoints(_epoch: bigint) {
+	await prisma.user.updateMany({
+		data: { ownPoints: MAX_POINTS },
+	});
 }
 
-export function createUser(
+export async function createUser(
 	id: string,
-	currentEpoch: number,
+	currentEpoch: bigint,
 	optsIn = true
-): User {
+): Promise<User | null> {
 	const user = {
 		key: id,
 		epochSignUp: currentEpoch,
 		ownPoints: MAX_POINTS,
-		createDate: Date.now(),
-		timestamp: Date.now(),
+		createDate: BigInt(Date.now()),
+		timestamp: BigInt(Date.now()),
 		optsIn,
 	};
-	users.set(id, user);
-	return user;
+	let result: User | null = null;
+	try {
+		result = await prisma.user.create({ data: user });
+		// console.log(createUser);
+	} catch (e) {
+		console.error(e);
+	}
+	return result;
 }
 
-export function userExists(id: string): boolean {
-	return users.has(id);
+export async function userExists(id: string): Promise<boolean> {
+	return (
+		(await prisma.user.count({
+			where: { key: id },
+		})) > 0
+	);
 }
 
-export function userList(all = true): string[] {
-	const allUsers = Array.from(users.keys());
+export async function userList(all = true): Promise<string[]> {
+	const allUsers = (await prisma.user.findMany({ select: { key: true } })).map(
+		(user) => user.key
+	);
 	const result = all
 		? allUsers
-		: allUsers.filter((user) => getPoints(user).length > 0);
+		: allUsers.filter((key) => getPoints(key).length > 0);
 	return result;
 }
 
@@ -76,8 +87,8 @@ export function getBlockedUsers(blocker: string): Set<string> {
 /**
  * Clear all users from the system. Used since the state is shared between tests.
  */
-export function clearUsers(): void {
-	users.clear();
+export async function clearUsers() {
+	await prisma.user.deleteMany({});
 	blockedUsers.clear();
-	createUser('morat', 0);
+	await createUser('morat', 0n);
 }

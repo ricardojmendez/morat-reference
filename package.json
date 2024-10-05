@@ -11,8 +11,10 @@
 	},
 	"dependencies": {
 		"@elysiajs/html": "^1.1.0",
+		"@prisma/client": "5.20.0",
 		"elysia": "latest",
-		"prettier": "^3.3.3"
+		"prettier": "^3.3.3",
+		"prisma": "^5.20.0"
 	},
 	"devDependencies": {
 		"bun-types": "latest",

@@ -11,55 +11,56 @@ import {
 } from '../src/users';
 
 describe('creation', () => {
-	test('getting a non-existent user is undefined', () => {
-		clearUsers();
-		const user = getUser('non-existent');
-		expect(user).toBeUndefined();
+	test('getting a non-existent user is undefined', async () => {
+		await clearUsers();
+		const user = await getUser('non-existent');
+		expect(user).toBeNull();
 	});
 
-	test('validating user existence', () => {
-		clearUsers();
-		const result = userExists('non-existent');
+	test('validating user existence', async () => {
+		await clearUsers();
+		const result = await userExists('non-existent');
 		expect(result).toBeFalse();
 	});
 
-	test('create a user', () => {
-		const user = createUser('test-user', 1);
-		expect(user.epochSignUp).toBe(1);
-		expect(user.ownPoints).toBe(1000);
-		expect(user.key).toBe('test-user');
+	test('create a user', async () => {
+		const user = await createUser('test-user', 1n);
+        expect(user).toBeDefined();
+		expect(user?.epochSignUp).toBe(1n);
+		expect(user?.ownPoints).toBe(1000n);
+		expect(user?.key).toBe('test-user');
 	});
 
-	test('obtain user after creation', () => {
-		createUser('get-after', 1);
-		const user = getUser('get-after');
+	test('obtain user after creation', async () => {
+		await createUser('get-after', 1n);
+		const user = await getUser('get-after');
 		expect(user).toBeDefined();
-		expect(user!.epochSignUp).toBe(1);
-		expect(user!.ownPoints).toBe(1000);
+		expect(user!.epochSignUp).toBe(1n);
+		expect(user!.ownPoints).toBe(1000n);
 		expect(user!.key).toBe('get-after');
 	});
 });
 
 describe('list', () => {
-	test('returns only morat if no users', () => {
-		clearUsers();
-		const users = userList();
+	test('returns only morat if no users', async () => {
+		await clearUsers();
+		const users = await userList();
 		expect(users).toBeArrayOfSize(1);
 		expect(users).toContain('morat');
 	});
 
-	test('single user after addition', () => {
-		clearUsers();
-		createUser('alpha', 1);
-		const users = userList();
+	test('single user after addition', async () => {
+		await clearUsers();
+		await createUser('alpha', 1n);
+		const users = await userList();
 		expect(users).toContain('alpha');
 		expect(users).toBeArrayOfSize(2);
 	});
 
-	test('list returns all users', () => {
-		createUser('beta', 1);
-		createUser('gamma', 2);
-		const users = userList();
+	test('list returns all users', async () => {
+		await createUser('beta', 1n);
+		await createUser('gamma', 2n);
+		const users = await userList();
 		expect(users).toContain('alpha');
 		expect(users).toContain('beta');
 		expect(users).toContain('gamma');
@@ -68,17 +69,17 @@ describe('list', () => {
 });
 
 describe('blocking', () => {
-	test('no blocked users by default', () => {
-		clearUsers();
-		createUser('jane', 1);
+	test('no blocked users by default', async () => {
+		await clearUsers();
+		await createUser('jane', 1n);
 		const blocked = getBlockedUsers('jane');
 		expect(blocked).toBeEmpty();
 	});
 
-	test('block a user', () => {
-		clearUsers();
-		createUser('jane', 1);
-		createUser('troll', 0);
+	test('block a user', async () => {
+		await clearUsers();
+		await createUser('jane', 1n);
+		await createUser('troll', 0n);
 		blockUser('jane', 'troll');
 		blockUser('jane', 'nazi');
 		const blocked = getBlockedUsers('jane');
@@ -87,10 +88,10 @@ describe('blocking', () => {
 		expect(blocked).toContain('nazi');
 	});
 
-	test('cannot block Morat', () => {
-		clearUsers();
-		createUser('jane', 1);
-		createUser('morat', 0);
+	test('cannot block Morat', async () => {
+		await clearUsers();
+		await createUser('troll', 0n);
+		await createUser('jane', 1n);
 		blockUser('jane', 'troll');
 		blockUser('jane', 'morat');
 		const blocked = getBlockedUsers('jane');
@@ -98,10 +99,10 @@ describe('blocking', () => {
 		expect(blocked).not.toContain('morat');
 	});
 
-	test('unblock a user', () => {
-		clearUsers();
-		createUser('jane', 1);
-		createUser('troll', 0);
+	test('unblock a user', async () => {
+		await clearUsers();
+		await createUser('jane', 1n);
+		await createUser('troll', 0n);
 		blockUser('jane', 'troll');
 		blockUser('jane', 'mistake');
 		const blockedPre = getBlockedUsers('jane');
@@ -113,10 +114,10 @@ describe('blocking', () => {
 		expect(blockedPost).not.toContain('mistake');
 	});
 
-	test('unblocking works even if the user had never been blocked', () => {
-		clearUsers();
-		createUser('jane', 1);
-		createUser('troll', 0);
+	test('unblocking works even if the user had never been blocked', async () => {
+		await clearUsers();
+		await createUser('jane', 1n);
+		await createUser('troll', 0n);
 		blockUser('jane', 'troll');
 		blockUser('jane', 'mistake');
 		const blockedPre = getBlockedUsers('jane');

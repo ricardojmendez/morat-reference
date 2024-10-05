@@ -3,15 +3,15 @@ import {
 	clearUsers,
 	getBlockedUsers,
 	getUser,
-	userList,
 	topUpPoints,
 	User,
 } from './users';
+import { prisma } from './prisma';
 
 export type UserPoints = {
 	fromKey: string;
-	points: number;
-	epoch: number;
+	points: bigint;
+	epoch: bigint;
 };
 
 /**
@@ -21,14 +21,14 @@ export type UserPointsMap = Map<string, UserPoints>;
 
 type UserPointAssignment = {
 	fromKey: string;
-	epoch: number;
+	epoch: bigint;
 	points: UserPoints[];
 };
 
 export const DECAY_RATE = 0.1; // Every epoch, 10% of the assigned points are lost.
 export const MAX_EPOCHS_QUEUED = 1 / DECAY_RATE; // How long we will hold points for.
 
-const MIN_POINT_TRANSFER = 1;
+const MIN_POINT_TRANSFER = 1n;
 const MORAT_PCT = 0.01;
 
 const pointMap: Map<string, UserPointsMap> = new Map();
@@ -38,8 +38,8 @@ const queuedAssignments: Map<string, UserPointAssignment[]> = new Map();
 /**
  * Clear all users and points from the system. Used since the state is shared between tests.
  */
-export function clearPointsAndUsers() {
-	clearUsers();
+export async function clearPointsAndUsers() {
+	await clearUsers();
 	pointMap.clear();
 	queuedAssignments.clear();
 }
@@ -49,8 +49,8 @@ export function clearPointsAndUsers() {
  * @param userPoints UserPoints to tally up
  * @returns Total accumulated points
  */
-export function tallyPoints(userPoints: UserPoints[]): number {
-	return userPoints.reduce((acc, { points }) => acc + points, 0);
+export function tallyPoints(userPoints: UserPoints[]): bigint {
+	return userPoints.reduce((acc, { points }) => acc + points, 0n);
 }
 
 /**
@@ -60,10 +60,14 @@ export function tallyPoints(userPoints: UserPoints[]): number {
  * @param epoch Epoch to assign for the update
  * @returns A vector with the user points map that were deducted from the user (and can potentially be assigned to a new one).
  */
-function debitPoints(user: User, total: number, epoch: number): UserPoints[] {
-	const senderOwnPoints = user.ownPoints;
+async function debitPoints(
+	user: User,
+	total: bigint,
+	epoch: bigint
+): UserPoints[] {
+	const senderOwnPoints = Number(user.ownPoints);
 	const senderPoints = getPoints(user.key);
-	const senderPointTally = tallyPoints(senderPoints);
+	const senderPointTally = Number(tallyPoints(senderPoints));
 
 	const senderTotalPoints = senderPointTally + senderOwnPoints;
 
@@ -71,24 +75,26 @@ function debitPoints(user: User, total: number, epoch: number): UserPoints[] {
 		return [];
 	}
 
-	const fromOwnPointsPct = senderOwnPoints / senderTotalPoints;
+	const fromOwnPointsPct = Number(senderOwnPoints) / Number(senderTotalPoints);
 
 	// We do a ceiling on own points because this will skew towards transfering
 	// own points instead of received, so we keep more of what we've been sent,
 	// and subtract those that get replenished every epoch.
-	const fromOwnPointsTransfer = Math.ceil(total * fromOwnPointsPct);
-	const fromAssignedPointsTransfer = total - fromOwnPointsTransfer;
+	const totalNum = Number(total);
+	const fromOwnPointsTransfer = Math.ceil(totalNum * fromOwnPointsPct);
+	const fromAssignedPointsTransfer = totalNum - fromOwnPointsTransfer;
 
 	const fromPoints = pointMap.get(user.key) ?? new Map();
 	const pointsResult: UserPoints[] = [];
 
-	if (total > 0) {
+	if (total > 0n) {
 		const keysToDelete = new Set<string>();
 		for (const [fromKey, userPoints] of fromPoints.entries()) {
 			const pointSegment =
-				(userPoints.points / senderPointTally) * fromAssignedPointsTransfer;
-			const pointsToTransfer = Math.floor(pointSegment);
-			const pointsToWithdraw = Math.ceil(pointSegment);
+				(Number(userPoints.points) / senderPointTally) *
+				fromAssignedPointsTransfer;
+			const pointsToTransfer = BigInt(Math.floor(pointSegment));
+			const pointsToWithdraw = BigInt(Math.ceil(pointSegment));
 
 			if (pointsToWithdraw <= 0 && pointsToTransfer <= 0) {
 				continue;
@@ -124,10 +130,15 @@ function debitPoints(user: User, total: number, epoch: number): UserPoints[] {
 		}
 	}
 	pointMap.set(user.key, fromPoints);
-	user.ownPoints -= fromOwnPointsTransfer;
+
+	await prisma.user.update({
+		where: { key: user.key },
+		data: { ownPoints: user.ownPoints - BigInt(fromOwnPointsTransfer) },
+	});
+
 	pointsResult.push({
 		fromKey: user.key,
-		points: fromOwnPointsTransfer,
+		points: BigInt(fromOwnPointsTransfer),
 		epoch,
 	});
 	return pointsResult;
@@ -139,7 +150,7 @@ function debitPoints(user: User, total: number, epoch: number): UserPoints[] {
  * @param points Array containing the points and their sources.
  * @param epoch Epoch that the assignment is taking place.
  */
-function creditPoints(user: User, points: UserPoints[], epoch: number) {
+function creditPoints(user: User, points: UserPoints[], epoch: bigint) {
 	const userPoints = pointMap.get(user.key) ?? new Map();
 	for (const userPoint of points) {
 		// User will not receive points from themselves
@@ -152,8 +163,8 @@ function creditPoints(user: User, points: UserPoints[], epoch: number) {
 
 		const result = userPoints.get(userPoint.fromKey) ?? {
 			fromKey: userPoint.fromKey,
-			points: 0,
-			epoch: 0,
+			points: 0n,
+			epoch: 0n,
 		};
 		result.points += userPoint.points;
 		result.epoch = epoch;
@@ -179,12 +190,12 @@ export enum AssignResult {
  * @param epoch Epoch that the assignment is taking place.
  * @returns AssignResult.DeductFailed if the point claim index is invalid, otherwise AssignResult.Ok
  */
-export function claimPoints(
+export async function claimPoints(
 	userKey: string,
 	pointClaimIdx: number,
-	epoch: number
-): AssignResult {
-	const user = getUser(userKey);
+	epoch: bigint
+): Promise<AssignResult> {
+	const user = await getUser(userKey);
 	if (!user) {
 		return AssignResult.ReceiverDoesNotExist;
 	}
@@ -200,16 +211,16 @@ export function claimPoints(
 	// Note that this is a quick-and-dirty implementation for testing purposes,
 	// because reducing a value by 40% is not the same as reducing it by 10% four times
 	// applying a floor every time.
-	const epochDecay = Math.min(1, (epoch - toAssign.epoch) * DECAY_RATE);
+	const epochDecay = Math.min(1, Number(epoch - toAssign.epoch) * DECAY_RATE);
 
 	if (epochDecay < 1) {
 		const decayed = toAssign.points
 			.map((point) => ({
 				fromKey: point.fromKey,
-				points: Math.floor(point.points * (1 - epochDecay)),
+				points: BigInt(Math.floor(Number(point.points) * (1 - epochDecay))),
 				epoch: point.epoch,
 			}))
-			.filter((point) => point.points > 0);
+			.filter((point) => point.points > 0n);
 		toAssign.points = decayed;
 		creditPoints(user, toAssign.points, epoch);
 	}
@@ -224,12 +235,12 @@ export function claimPoints(
 	return AssignResult.Ok;
 }
 
-function assignPointsWorker(
+async function assignPointsWorker(
 	senderKey: string,
 	receiverKey: string,
-	points: number,
-	epoch: number
-): AssignResult {
+	points: bigint,
+	epoch: bigint
+): Promise<AssignResult> {
 	if (senderKey == receiverKey) {
 		return AssignResult.CantSendToSelf;
 	}
@@ -238,8 +249,8 @@ function assignPointsWorker(
 		return AssignResult.PointsShouldBePositive;
 	}
 
-	const sender = getUser(senderKey);
-	const receiver = getUser(receiverKey);
+	const sender = await getUser(senderKey);
+	const receiver = await getUser(receiverKey);
 
 	if (!sender) {
 		return AssignResult.SenderDoesNotExist;
@@ -258,7 +269,7 @@ function assignPointsWorker(
 		return AssignResult.NotEnoughPoints;
 	}
 
-	const toCredit = debitPoints(sender, points, epoch);
+	const toCredit = await debitPoints(sender, points, epoch);
 
 	if (toCredit.length == 0) {
 		return AssignResult.DeductFailed;
@@ -273,12 +284,12 @@ function assignPointsWorker(
 	return AssignResult.Ok;
 }
 
-export function assignPoints(
+export async function assignPoints(
 	sender: string,
 	receiver: string,
-	points: number,
-	epoch: number
-): AssignResult {
+	points: bigint,
+	epoch: bigint
+): Promise<AssignResult> {
 	if (sender == MORAT_USER) {
 		return AssignResult.SenderDoesNotExist;
 	}
@@ -286,7 +297,7 @@ export function assignPoints(
         This duplicates some of the validations from assignPointsWorker because we need to 
         verify the point amount before we deduct Morat's points.
      */
-	const senderUser = getUser(sender);
+	const senderUser = await getUser(sender);
 	if (!senderUser) {
 		return AssignResult.SenderDoesNotExist;
 	}
@@ -299,10 +310,15 @@ export function assignPoints(
 	}
 
 	// Now we can transfer
-	const pointsToReceiver = Math.ceil(points * (1 - MORAT_PCT));
+	const pointsToReceiver = BigInt(Math.ceil(Number(points) * (1 - MORAT_PCT)));
 	const pointsToMorat = points - pointsToReceiver;
 
-	const result = assignPointsWorker(sender, receiver, pointsToReceiver, epoch);
+	const result = await assignPointsWorker(
+		sender,
+		receiver,
+		pointsToReceiver,
+		epoch
+	);
 	if (result != AssignResult.Ok) {
 		return result;
 	}
@@ -318,14 +334,16 @@ export function assignPoints(
  *
  * @param epoch Epoch to assign for the update
  */
-export function decayPoints(epoch: number) {
+export function decayPoints(epoch: bigint) {
 	const keysToDelete = new Set<string>();
 	for (const [key, userPointsMap] of pointMap.entries()) {
 		const sendersToDelete = new Set<string>();
 		for (const [fromKey, userPoints] of userPointsMap.entries()) {
-			const newPoints = Math.floor(userPoints.points * (1 - DECAY_RATE));
+			const newPoints = Math.floor(
+				Number(userPoints.points) * (1 - DECAY_RATE)
+			);
 			if (newPoints > 0) {
-				userPoints.points = newPoints;
+				userPoints.points = BigInt(newPoints);
 				userPoints.epoch = epoch;
 			} else {
 				sendersToDelete.add(fromKey);
@@ -343,7 +361,7 @@ export function decayPoints(epoch: number) {
 	}
 }
 
-function pruneQueuedPoints(epoch: number) {
+function pruneQueuedPoints(epoch: bigint) {
 	const keysToDelete = new Set<string>();
 	for (const [key, queued] of queuedAssignments.entries()) {
 		const pruned = queued.filter(
@@ -360,13 +378,8 @@ function pruneQueuedPoints(epoch: number) {
 	}
 }
 
-export function epochTick(epoch: number): void {
-	for (const key of userList()) {
-		const user = getUser(key);
-		if (user) {
-			topUpPoints(user, epoch);
-		}
-	}
+export async function epochTick(epoch: bigint) {
+	await topUpPoints(epoch);
 	decayPoints(epoch);
 	pruneQueuedPoints(epoch);
 }

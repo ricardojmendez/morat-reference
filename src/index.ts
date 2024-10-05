@@ -26,7 +26,7 @@ import path from 'path';
 
 const EPOCH_SECONDS = 10;
 
-let currentEpoch = 0;
+let currentEpoch = 0n;
 
 const StringID = t.Object({
 	encodedId: t.String(),
@@ -73,12 +73,12 @@ const app = new Elysia()
 	)
 	.post(
 		'/user/:encodedId',
-		({ body, params: { encodedId }, error }) => {
+		async ({ body, params: { encodedId }, error }) => {
 			const id = decodeURIComponent(encodedId);
 			const { optsIn } = body ?? {};
-			return userExists(id)
+			return (await userExists(id))
 				? error(409, 'User already exists')
-				: createUser(id, currentEpoch, optsIn ?? true);
+				: await createUser(id, currentEpoch, optsIn ?? true);
 		},
 		{
 			params: StringID,
@@ -120,16 +120,16 @@ const app = new Elysia()
 	)
 	.get(
 		'/points/:encodedId/tally',
-		({ params: { encodedId }, error }) => {
+		async ({ params: { encodedId }, error }) => {
 			const id = decodeURIComponent(encodedId);
-			const user = getUser(id);
+			const user = await getUser(id);
 			if (!user) {
 				return error(404, 'User not found');
 			}
 			const userPoints = getPoints(id);
 			const tally = userPoints
 				? tallyPoints(Array.from(userPoints.values()))
-				: 0;
+				: 0n;
 			return {
 				own: user.ownPoints,
 				assigned: tally,
@@ -142,10 +142,15 @@ const app = new Elysia()
 	)
 	.put(
 		'/points/transfer/:encodedFrom/:encodedTo/:points',
-		({ params: { encodedFrom, encodedTo, points }, error }) => {
+		async ({ params: { encodedFrom, encodedTo, points }, error }) => {
 			const from = decodeURIComponent(encodedFrom);
 			const to = decodeURIComponent(encodedTo);
-			const success = assignPoints(from, to, points, currentEpoch);
+			const success = await assignPoints(
+				from,
+				to,
+				BigInt(points),
+				currentEpoch
+			);
 			if (success != AssignResult.Ok) {
 				return error(400, `Invalid points transfer: ${success}`);
 			}
@@ -161,10 +166,10 @@ const app = new Elysia()
 	)
 	.put(
 		'/points/claim/:encodedId',
-		({ params: { encodedId }, body, error }) => {
+		async ({ params: { encodedId }, body, error }) => {
 			const id = decodeURIComponent(encodedId);
 			const { index } = body;
-			const result = claimPoints(id, index, currentEpoch);
+			const result = await claimPoints(id, index, currentEpoch);
 			return result == AssignResult.Ok
 				? { success: true }
 				: error(400, `Invalid points claim: ${result}`);
