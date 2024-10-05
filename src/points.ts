@@ -14,11 +14,6 @@ export type UserPoints = {
 	epoch: bigint;
 };
 
-/**
- * Maps users to an array of points that others users have assigned to them.
- */
-export type UserPointsMap = Map<string, UserPoints>;
-
 type UserPointAssignment = {
 	fromKey: string;
 	epoch: bigint;
@@ -31,8 +26,6 @@ export const MAX_EPOCHS_QUEUED = 1 / DECAY_RATE; // How long we will hold points
 const MIN_POINT_TRANSFER = 1n;
 const MORAT_PCT = 0.01;
 
-const pointMap: Map<string, UserPointsMap> = new Map();
-
 const queuedAssignments: Map<string, UserPointAssignment[]> = new Map();
 
 /**
@@ -40,7 +33,6 @@ const queuedAssignments: Map<string, UserPointAssignment[]> = new Map();
  */
 export async function clearPointsAndUsers() {
 	await clearUsers();
-	pointMap.clear();
 	queuedAssignments.clear();
 }
 
@@ -66,7 +58,7 @@ async function debitPoints(
 	epoch: bigint
 ): Promise<UserPoints[]> {
 	const senderOwnPoints = Number(user.ownPoints);
-	const senderPoints = getPoints(user.key);
+	const senderPoints = await getPoints(user.key);
 	const senderPointTally = Number(tallyPoints(senderPoints));
 
 	const senderTotalPoints = senderPointTally + senderOwnPoints;
@@ -84,12 +76,12 @@ async function debitPoints(
 	const fromOwnPointsTransfer = Math.ceil(totalNum * fromOwnPointsPct);
 	const fromAssignedPointsTransfer = totalNum - fromOwnPointsTransfer;
 
-	const fromPoints = pointMap.get(user.key) ?? new Map();
+	const fromPoints = await getPoints(user.key);
 	const pointsResult: UserPoints[] = [];
 
 	if (total > 0n) {
 		const keysToDelete = new Set<string>();
-		for (const [fromKey, userPoints] of fromPoints.entries()) {
+		for (const userPoints of fromPoints) {
 			const pointSegment =
 				(Number(userPoints.points) / senderPointTally) *
 				fromAssignedPointsTransfer;
@@ -100,13 +92,22 @@ async function debitPoints(
 				continue;
 			}
 
+			const fromKey = userPoints.fromKey;
 			const newUserPoints = {
 				fromKey,
 				points: userPoints.points - pointsToWithdraw,
 				epoch,
 			};
 			if (newUserPoints.points > 0) {
-				fromPoints.set(fromKey, newUserPoints);
+				await prisma.userPoints.update({
+					where: {
+						ownerId_assignerId: { assignerId: fromKey, ownerId: user.key },
+					},
+					data: {
+						points: newUserPoints.points,
+						epoch,
+					},
+				});
 			} else {
 				keysToDelete.add(fromKey);
 			}
@@ -124,12 +125,14 @@ async function debitPoints(
 			});
 		}
 
-		// Let's not modify the map while iterating over it.
-		for (const key of keysToDelete) {
-			fromPoints.delete(key);
-		}
+		// Let's not modify the group while iterating over it.
+		await prisma.userPoints.deleteMany({
+			where: {
+				ownerId: user.key,
+				assignerId: { in: Array.from(keysToDelete) },
+			},
+		});
 	}
-	pointMap.set(user.key, fromPoints);
 
 	await prisma.user.update({
 		where: { key: user.key },
@@ -150,8 +153,7 @@ async function debitPoints(
  * @param points Array containing the points and their sources.
  * @param epoch Epoch that the assignment is taking place.
  */
-function creditPoints(user: User, points: UserPoints[], epoch: bigint) {
-	const userPoints = pointMap.get(user.key) ?? new Map();
+async function creditPoints(user: User, points: UserPoints[], epoch: bigint) {
 	for (const userPoint of points) {
 		// User will not receive points from themselves
 		if (
@@ -161,16 +163,38 @@ function creditPoints(user: User, points: UserPoints[], epoch: bigint) {
 			continue;
 		}
 
-		const result = userPoints.get(userPoint.fromKey) ?? {
-			fromKey: userPoint.fromKey,
-			points: 0n,
-			epoch: 0n,
-		};
-		result.points += userPoint.points;
-		result.epoch = epoch;
-		userPoints.set(userPoint.fromKey, result);
+		const pointRecord = await prisma.userPoints.findUnique({
+			where: {
+				ownerId_assignerId: {
+					assignerId: userPoint.fromKey,
+					ownerId: user.key,
+				},
+			},
+		});
+		if (!pointRecord) {
+			await prisma.userPoints.create({
+				data: {
+					assignerId: userPoint.fromKey,
+					ownerId: user.key,
+					points: userPoint.points,
+					epoch,
+				},
+			});
+		} else {
+			await prisma.userPoints.update({
+				where: {
+					ownerId_assignerId: {
+						assignerId: userPoint.fromKey,
+						ownerId: user.key,
+					},
+				},
+				data: {
+					points: pointRecord.points + userPoint.points,
+					epoch,
+				},
+			});
+		}
 	}
-	pointMap.set(user.key, userPoints);
 }
 
 export enum AssignResult {
@@ -222,7 +246,7 @@ export async function claimPoints(
 			}))
 			.filter((point) => point.points > 0n);
 		toAssign.points = decayed;
-		creditPoints(user, toAssign.points, epoch);
+		await creditPoints(user, toAssign.points, epoch);
 	}
 
 	unclaimedPoints.splice(pointClaimIdx, 1);
@@ -260,7 +284,7 @@ async function assignPointsWorker(
 	}
 
 	const senderOwnPoints = sender.ownPoints;
-	const senderPoints = getPoints(senderKey);
+	const senderPoints = await getPoints(senderKey);
 	const senderPointTally = tallyPoints(senderPoints);
 
 	const senderTotalPoints = senderPointTally + senderOwnPoints;
@@ -276,7 +300,7 @@ async function assignPointsWorker(
 	}
 	const blockedUsers = await getBlockedUsers(receiverKey);
 	if (receiver.optsIn && !blockedUsers.has(senderKey)) {
-		creditPoints(receiver, toCredit, epoch);
+		await creditPoints(receiver, toCredit, epoch);
 	} else {
 		const queued = getQueuedPoints(receiverKey);
 		queued.push({ fromKey: senderKey, epoch, points: toCredit });
@@ -303,7 +327,7 @@ export async function assignPoints(
 		return AssignResult.SenderDoesNotExist;
 	}
 
-	const senderPoints = pointMap.get(sender) ?? new Map();
+	const senderPoints = await getPoints(sender);
 	const senderAssignedPoints = tallyPoints(Array.from(senderPoints.values()));
 	const fromTotalPoints = senderAssignedPoints + senderUser.ownPoints;
 	if (fromTotalPoints < points) {
@@ -335,31 +359,40 @@ export async function assignPoints(
  *
  * @param epoch Epoch to assign for the update
  */
-export function decayPoints(epoch: bigint) {
-	const keysToDelete = new Set<string>();
-	for (const [key, userPointsMap] of pointMap.entries()) {
-		const sendersToDelete = new Set<string>();
-		for (const [fromKey, userPoints] of userPointsMap.entries()) {
-			const newPoints = Math.floor(
-				Number(userPoints.points) * (1 - DECAY_RATE)
-			);
-			if (newPoints > 0) {
-				userPoints.points = BigInt(newPoints);
-				userPoints.epoch = epoch;
-			} else {
-				sendersToDelete.add(fromKey);
-			}
-		}
-		for (const key of sendersToDelete) {
-			userPointsMap.delete(key);
-		}
-		if (userPointsMap.size == 0) {
-			keysToDelete.add(key);
+export async function decayPoints(epoch: bigint) {
+	const allPoints = await prisma.userPoints.findMany({});
+
+	const pairsToDelete = [];
+	for (const point of allPoints) {
+		const newPoints = Math.floor(Number(point.points) * (1 - DECAY_RATE));
+		if (newPoints > 0) {
+			await prisma.userPoints.update({
+				where: {
+					ownerId_assignerId: {
+						ownerId: point.ownerId,
+						assignerId: point.assignerId,
+					},
+				},
+				data: {
+					points: BigInt(newPoints),
+					epoch,
+				},
+			});
+		} else {
+			pairsToDelete.push({
+				ownerId: point.ownerId,
+				assignerId: point.assignerId,
+			});
 		}
 	}
-	for (const key of keysToDelete) {
-		pointMap.delete(key);
-	}
+	await prisma.userPoints.deleteMany({
+		where: {
+			OR: pairsToDelete.map((pair) => ({
+				ownerId: pair.ownerId,
+				assignerId: pair.assignerId,
+			})),
+		},
+	});
 }
 
 function pruneQueuedPoints(epoch: bigint) {
@@ -381,13 +414,20 @@ function pruneQueuedPoints(epoch: bigint) {
 
 export async function epochTick(epoch: bigint) {
 	await topUpPoints(epoch);
-	decayPoints(epoch);
+	await decayPoints(epoch);
 	pruneQueuedPoints(epoch);
 }
 
-export function getPoints(id: string): UserPoints[] {
-	const values = pointMap.get(id)?.values();
-	return values ? Array.from(values) : [];
+export async function getPoints(id: string): Promise<UserPoints[]> {
+	const dbPoints = await prisma.userPoints.findMany({
+		where: { ownerId: id },
+	});
+	const points: UserPoints[] = dbPoints.map((point) => ({
+		fromKey: point.assignerId,
+		points: point.points,
+		epoch: point.epoch,
+	}));
+	return points;
 }
 
 export function getQueuedPoints(id: string): UserPointAssignment[] {

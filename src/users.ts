@@ -41,7 +41,7 @@ export async function createUser(
 		result = await prisma.user.create({ data: user });
 		// console.log(createUser);
 	} catch (e) {
-		console.error(e);
+		// console.error(e);
 	}
 	return result;
 }
@@ -60,7 +60,7 @@ export async function userList(all = true): Promise<string[]> {
 	);
 	const result = all
 		? allUsers
-		: allUsers.filter((key) => getPoints(key).length > 0);
+		: allUsers.filter(async (key) => (await getPoints(key)).length > 0);
 	return result;
 }
 

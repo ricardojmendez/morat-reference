@@ -37,8 +37,8 @@ model BlockList {
 }
 
 model UserPoints {
-    owner    User   @relation(fields: [ownerId], references: [key], name: "owner")
-    assigner User   @relation(fields: [assignerId], references: [key], name: "assigner")
+    owner    User   @relation(fields: [ownerId], references: [key], name: "owner", onDelete: Cascade)
+    assigner User   @relation(fields: [assignerId], references: [key], name: "assigner", onDelete: Cascade)
     points   BigInt
     epoch    BigInt
 

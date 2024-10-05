@@ -96,7 +96,7 @@ describe('assign - transfer', () => {
 		// Own points of the receiver do not change
 		expect(receiver!.ownPoints).toBe(1000n);
 		// Receiver points are tagged as from the sender
-		const receiverPoints = getPoints('receiver');
+		const receiverPoints = await getPoints('receiver');
 		const fromSender = receiverPoints[0];
 		expect(fromSender).toEqual({ fromKey: 'sender', points: 20n, epoch: 1n });
 		// Point tally is 20, because we only got one transfer
@@ -112,7 +112,7 @@ describe('assign - transfer', () => {
 		expect(result).toBe(AssignResult.Ok);
         const sender = await getUser('sender');
 		expect(sender!.ownPoints).toBe(999n);
-		const receiverPoints = getPoints('receiver');
+		const receiverPoints = await getPoints('receiver');
 		const tally = tallyPoints(receiverPoints);
 		expect(receiverPoints).toHaveLength(1);
 		expect(receiverPoints[0]).toEqual({
@@ -140,11 +140,11 @@ describe('assign - transfer', () => {
 		// Own points of the receiver do not change
 		expect(bob!.ownPoints).toBe(1000n);
 		// Bob's point tally adds up
-		const bobsPoints = getPoints('bob');
+		const bobsPoints = await getPoints('bob');
 		const tally = tallyPoints(bobsPoints);
 		expect(tally).toBe(51n);
 		// Bob's received points have the right tags
-		const receiverPoints = getPoints('bob');
+		const receiverPoints = await getPoints('bob');
 		const fromAlice = receiverPoints.find((p) => p.fromKey === 'alice');
 		expect(fromAlice).toEqual({ fromKey: 'alice', points: 20n, epoch: 1n });
 		const fromCharlie = receiverPoints.find((p) => p.fromKey === 'charlie');
@@ -161,7 +161,7 @@ describe('assign - transfer', () => {
 		expect(await assignPoints('charlie', 'bob', 100n, 3n)).toBe(AssignResult.Ok);
 		// Bob's point tally adds up
         let bob = await getUser('bob');
-		const bobsPoints = getPoints('bob');
+		const bobsPoints = await getPoints('bob');
 		expect(bob!.ownPoints).toBe(1000n);
 		const preTally = tallyPoints(bobsPoints);
 		expect(preTally).toBe(149n); // Got one point less because it went to Morat
@@ -170,7 +170,7 @@ describe('assign - transfer', () => {
 		// 174 coming from his own points, 8 from alice, and 17 from charlie
         bob = await getUser('bob');
 		expect(bob!.ownPoints).toBe(825n);
-		const bobsFinalPoints = getPoints('bob');
+		const bobsFinalPoints = await getPoints('bob');
 		expect(bobsFinalPoints).toHaveLength(2);
 		expect(bobsFinalPoints).toContainEqual({
 			fromKey: 'alice',
@@ -187,7 +187,7 @@ describe('assign - transfer', () => {
 		// and the points Bob got from Alice and Charlie. Three points went to Morat.
         const zeno = await getUser('zeno');
 		expect(zeno!.ownPoints).toBe(1000n);
-		const zenosFinalPoints = getPoints('zeno');
+		const zenosFinalPoints = await getPoints('zeno');
 		expect(zenosFinalPoints).toHaveLength(3);
 		expect(zenosFinalPoints).toContainEqual({
 			fromKey: 'alice',
@@ -205,7 +205,7 @@ describe('assign - transfer', () => {
 			epoch: 4n,
 		});
 		// Morat got its share
-		const moratsFinalPoints = getPoints('morat');
+		const moratsFinalPoints = await getPoints('morat');
 		expect(moratsFinalPoints).toHaveLength(2);
 		expect(moratsFinalPoints).toContainEqual({
 			fromKey: 'bob',
