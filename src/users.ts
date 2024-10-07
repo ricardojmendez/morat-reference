@@ -1,5 +1,6 @@
 import { getPoints } from './points';
 import { prisma } from './prisma';
+import { Prisma } from '@prisma/client';
 
 export type User = {
 	key: string;
@@ -13,12 +14,20 @@ export type User = {
 export const MAX_POINTS = 1000n;
 export const MORAT_USER = 'morat';
 
-export async function getUser(id: string): Promise<User | null> {
-	return await prisma.user.findUnique({ where: { key: id } });
+export async function getUser(
+	id: string,
+	tx?: Prisma.TransactionClient
+): Promise<User | null> {
+	const client = tx ?? prisma;
+	return await client.user.findUnique({ where: { key: id } });
 }
 
-export async function topUpPoints(_epoch: bigint) {
-	await prisma.user.updateMany({
+export async function topUpPoints(
+	_epoch: bigint,
+	tx?: Prisma.TransactionClient
+) {
+	const client = tx ?? prisma;
+	await client.user.updateMany({
 		data: { ownPoints: MAX_POINTS },
 	});
 }

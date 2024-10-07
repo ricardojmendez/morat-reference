@@ -7,6 +7,7 @@ import {
 	User,
 } from './users';
 import { prisma } from './prisma';
+import { Prisma } from '@prisma/client';
 
 export type UserPoints = {
 	fromKey: string;
@@ -53,12 +54,13 @@ export function tallyPoints(userPoints: UserPoints[]): bigint {
  * @returns A vector with the user points map that were deducted from the user (and can potentially be assigned to a new one).
  */
 async function debitPoints(
+	tx: Prisma.TransactionClient,
 	user: User,
 	total: bigint,
 	epoch: bigint
 ): Promise<UserPoints[]> {
 	const senderOwnPoints = Number(user.ownPoints);
-	const senderPoints = await getPoints(user.key);
+	const senderPoints = await getPoints(user.key, tx);
 	const senderPointTally = Number(tallyPoints(senderPoints));
 
 	const senderTotalPoints = senderPointTally + senderOwnPoints;
@@ -76,7 +78,7 @@ async function debitPoints(
 	const fromOwnPointsTransfer = Math.ceil(totalNum * fromOwnPointsPct);
 	const fromAssignedPointsTransfer = totalNum - fromOwnPointsTransfer;
 
-	const fromPoints = await getPoints(user.key);
+	const fromPoints = await getPoints(user.key, tx);
 	const pointsResult: UserPoints[] = [];
 
 	if (total > 0n) {
@@ -99,7 +101,7 @@ async function debitPoints(
 				epoch,
 			};
 			if (newUserPoints.points > 0) {
-				await prisma.userPoints.update({
+				await tx.userPoints.update({
 					where: {
 						ownerId_assignerId: { assignerId: fromKey, ownerId: user.key },
 					},
@@ -126,7 +128,7 @@ async function debitPoints(
 		}
 
 		// Let's not modify the group while iterating over it.
-		await prisma.userPoints.deleteMany({
+		await tx.userPoints.deleteMany({
 			where: {
 				ownerId: user.key,
 				assignerId: { in: Array.from(keysToDelete) },
@@ -134,7 +136,7 @@ async function debitPoints(
 		});
 	}
 
-	await prisma.user.update({
+	await tx.user.update({
 		where: { key: user.key },
 		data: { ownPoints: user.ownPoints - BigInt(fromOwnPointsTransfer) },
 	});
@@ -149,11 +151,17 @@ async function debitPoints(
 
 /**
  * Credits a bundle of points to a user account.
+ * @param tx Transaction to run the credit in.
  * @param user User to credit the points to.
  * @param points Array containing the points and their sources.
  * @param epoch Epoch that the assignment is taking place.
  */
-async function creditPoints(user: User, points: UserPoints[], epoch: bigint) {
+async function creditPoints(
+	tx: Prisma.TransactionClient,
+	user: User,
+	points: UserPoints[],
+	epoch: bigint
+) {
 	for (const userPoint of points) {
 		// User will not receive points from themselves
 		if (
@@ -163,7 +171,7 @@ async function creditPoints(user: User, points: UserPoints[], epoch: bigint) {
 			continue;
 		}
 
-		const pointRecord = await prisma.userPoints.findUnique({
+		const pointRecord = await tx.userPoints.findUnique({
 			where: {
 				ownerId_assignerId: {
 					assignerId: userPoint.fromKey,
@@ -172,7 +180,7 @@ async function creditPoints(user: User, points: UserPoints[], epoch: bigint) {
 			},
 		});
 		if (!pointRecord) {
-			await prisma.userPoints.create({
+			await tx.userPoints.create({
 				data: {
 					assignerId: userPoint.fromKey,
 					ownerId: user.key,
@@ -181,7 +189,7 @@ async function creditPoints(user: User, points: UserPoints[], epoch: bigint) {
 				},
 			});
 		} else {
-			await prisma.userPoints.update({
+			await tx.userPoints.update({
 				where: {
 					ownerId_assignerId: {
 						assignerId: userPoint.fromKey,
@@ -205,6 +213,7 @@ export enum AssignResult {
 	NotEnoughPoints,
 	PointsShouldBePositive,
 	DeductFailed,
+	UnknownError,
 }
 
 /**
@@ -237,29 +246,32 @@ export async function claimPoints(
 	// applying a floor every time.
 	const epochDecay = Math.min(1, Number(epoch - toAssign.epoch) * DECAY_RATE);
 
-	if (epochDecay < 1) {
-		const decayed = toAssign.points
-			.map((point) => ({
-				fromKey: point.fromKey,
-				points: BigInt(Math.floor(Number(point.points) * (1 - epochDecay))),
-				epoch: point.epoch,
-			}))
-			.filter((point) => point.points > 0n);
-		toAssign.points = decayed;
-		await creditPoints(user, toAssign.points, epoch);
-	}
+	await prisma.$transaction(async (tx) => {
+		if (epochDecay < 1) {
+			const decayed = toAssign.points
+				.map((point) => ({
+					fromKey: point.fromKey,
+					points: BigInt(Math.floor(Number(point.points) * (1 - epochDecay))),
+					epoch: point.epoch,
+				}))
+				.filter((point) => point.points > 0n);
+			toAssign.points = decayed;
+			await creditPoints(tx, user, toAssign.points, epoch);
+		}
 
-	unclaimedPoints.splice(pointClaimIdx, 1);
-	if (unclaimedPoints.length == 0) {
-		queuedAssignments.delete(userKey);
-	} else {
-		queuedAssignments.set(userKey, unclaimedPoints);
-	}
+		unclaimedPoints.splice(pointClaimIdx, 1);
+		if (unclaimedPoints.length == 0) {
+			queuedAssignments.delete(userKey);
+		} else {
+			queuedAssignments.set(userKey, unclaimedPoints);
+		}
+	});
 
 	return AssignResult.Ok;
 }
 
 async function assignPointsWorker(
+	tx: Prisma.TransactionClient,
 	senderKey: string,
 	receiverKey: string,
 	points: bigint,
@@ -273,7 +285,8 @@ async function assignPointsWorker(
 		return AssignResult.PointsShouldBePositive;
 	}
 
-	const sender = await getUser(senderKey);
+	const sender = await getUser(senderKey, tx);
+	// We don't need to get the receiver within the transaction because we don't modify it.
 	const receiver = await getUser(receiverKey);
 
 	if (!sender) {
@@ -284,7 +297,7 @@ async function assignPointsWorker(
 	}
 
 	const senderOwnPoints = sender.ownPoints;
-	const senderPoints = await getPoints(senderKey);
+	const senderPoints = await getPoints(senderKey, tx);
 	const senderPointTally = tallyPoints(senderPoints);
 
 	const senderTotalPoints = senderPointTally + senderOwnPoints;
@@ -293,14 +306,14 @@ async function assignPointsWorker(
 		return AssignResult.NotEnoughPoints;
 	}
 
-	const toCredit = await debitPoints(sender, points, epoch);
+	const toCredit = await debitPoints(tx, sender, points, epoch);
 
 	if (toCredit.length == 0) {
 		return AssignResult.DeductFailed;
 	}
 	const blockedUsers = await getBlockedUsers(receiverKey);
 	if (receiver.optsIn && !blockedUsers.has(senderKey)) {
-		await creditPoints(receiver, toCredit, epoch);
+		await creditPoints(tx, receiver, toCredit, epoch);
 	} else {
 		const queued = getQueuedPoints(receiverKey);
 		queued.push({ fromKey: senderKey, epoch, points: toCredit });
@@ -322,35 +335,49 @@ export async function assignPoints(
         This duplicates some of the validations from assignPointsWorker because we need to 
         verify the point amount before we deduct Morat's points.
      */
-	const senderUser = await getUser(sender);
-	if (!senderUser) {
-		return AssignResult.SenderDoesNotExist;
-	}
+	const result = await prisma.$transaction(
+		async (tx) => {
+			const senderUser = await getUser(sender, tx);
+			if (!senderUser) {
+				return AssignResult.SenderDoesNotExist;
+			}
 
-	const senderPoints = await getPoints(sender);
-	const senderAssignedPoints = tallyPoints(Array.from(senderPoints.values()));
-	const fromTotalPoints = senderAssignedPoints + senderUser.ownPoints;
-	if (fromTotalPoints < points) {
-		return AssignResult.NotEnoughPoints;
-	}
+			const senderPoints = await getPoints(sender, tx);
+			const senderAssignedPoints = tallyPoints(
+				Array.from(senderPoints.values())
+			);
+			const fromTotalPoints = senderAssignedPoints + senderUser.ownPoints;
+			if (fromTotalPoints < points) {
+				return AssignResult.NotEnoughPoints;
+			}
 
-	// Now we can transfer
-	const pointsToReceiver = BigInt(Math.ceil(Number(points) * (1 - MORAT_PCT)));
-	const pointsToMorat = points - pointsToReceiver;
+			// Now we can transfer
+			const pointsToReceiver = BigInt(
+				Math.ceil(Number(points) * (1 - MORAT_PCT))
+			);
+			const pointsToMorat = points - pointsToReceiver;
 
-	const result = await assignPointsWorker(
-		sender,
-		receiver,
-		pointsToReceiver,
-		epoch
+			const result = await assignPointsWorker(
+				tx,
+				sender,
+				receiver,
+				pointsToReceiver,
+				epoch
+			);
+			if (result != AssignResult.Ok) {
+				return result;
+			}
+			if (pointsToMorat > 0) {
+				return assignPointsWorker(tx, sender, MORAT_USER, pointsToMorat, epoch);
+			}
+			return AssignResult.Ok;
+		},
+		{
+			isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+		}
 	);
-	if (result != AssignResult.Ok) {
-		return result;
-	}
-	if (pointsToMorat > 0) {
-		return assignPointsWorker(sender, MORAT_USER, pointsToMorat, epoch);
-	}
-	return AssignResult.Ok;
+
+	return result ?? AssignResult.UnknownError;
 }
 
 /**
@@ -358,15 +385,20 @@ export async function assignPoints(
  * that we will not keep less than 1 point for a specific user assignment.
  *
  * @param epoch Epoch to assign for the update
+ * @param tx Optional transaction to run the process on
  */
-export async function decayPoints(epoch: bigint) {
-	const allPoints = await prisma.userPoints.findMany({});
+export async function decayPoints(
+	epoch: bigint,
+	tx?: Prisma.TransactionClient
+) {
+	const client = tx ?? prisma;
+	const allPoints = await client.userPoints.findMany({});
 
 	const pairsToDelete = [];
 	for (const point of allPoints) {
 		const newPoints = Math.floor(Number(point.points) * (1 - DECAY_RATE));
 		if (newPoints > 0) {
-			await prisma.userPoints.update({
+			await client.userPoints.update({
 				where: {
 					ownerId_assignerId: {
 						ownerId: point.ownerId,
@@ -385,7 +417,7 @@ export async function decayPoints(epoch: bigint) {
 			});
 		}
 	}
-	await prisma.userPoints.deleteMany({
+	await client.userPoints.deleteMany({
 		where: {
 			OR: pairsToDelete.map((pair) => ({
 				ownerId: pair.ownerId,
@@ -413,13 +445,19 @@ function pruneQueuedPoints(epoch: bigint) {
 }
 
 export async function epochTick(epoch: bigint) {
-	await topUpPoints(epoch);
-	await decayPoints(epoch);
-	pruneQueuedPoints(epoch);
+	await prisma.$transaction(async (tx) => {
+		await topUpPoints(epoch, tx);
+		await decayPoints(epoch, tx);
+		pruneQueuedPoints(epoch);
+	});
 }
 
-export async function getPoints(id: string): Promise<UserPoints[]> {
-	const dbPoints = await prisma.userPoints.findMany({
+export async function getPoints(
+	id: string,
+	tx?: Prisma.TransactionClient
+): Promise<UserPoints[]> {
+	const client = tx ?? prisma;
+	const dbPoints = await client.userPoints.findMany({
 		where: { ownerId: id },
 	});
 	const points: UserPoints[] = dbPoints.map((point) => ({
