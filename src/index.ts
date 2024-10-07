@@ -143,18 +143,23 @@ const app = new Elysia()
 	.put(
 		'/points/transfer/:encodedFrom/:encodedTo/:points',
 		async ({ params: { encodedFrom, encodedTo, points }, error }) => {
-			const from = decodeURIComponent(encodedFrom);
-			const to = decodeURIComponent(encodedTo);
-			const success = await assignPoints(
-				from,
-				to,
-				BigInt(points),
-				currentEpoch
-			);
-			if (success != AssignResult.Ok) {
-				return error(400, `Invalid points transfer: ${success}`);
+			try {
+				const from = decodeURIComponent(encodedFrom);
+				const to = decodeURIComponent(encodedTo);
+				const success = await assignPoints(
+					from,
+					to,
+					BigInt(points),
+					currentEpoch
+				);
+				if (success != AssignResult.Ok) {
+					return error(400, `Invalid points transfer: ${success}`);
+				}
+				return { success: true };
+			} catch (e) {
+				console.error(`Exception with points transfer: ${e}`);
+				return error(500, `Unknown exception`);
 			}
-			return { success: true };
 		},
 		{
 			params: t.Object({
