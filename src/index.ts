@@ -126,7 +126,7 @@ const app = new Elysia()
 			if (!user) {
 				return error(404, 'User not found');
 			}
-			const userPoints = getPoints(id);
+			const userPoints = await getPoints(id);
 			const tally = userPoints
 				? tallyPoints(Array.from(userPoints.values()))
 				: 0n;
