@@ -207,7 +207,7 @@ describe('assign - transfer', () => {
 		expect(await assignPoints('bob', 'zeno', 200n, 4n)).toBe(AssignResult.Ok);
 		// Bob's points got deducted proportionally across the spectrum, with
 		// 174 coming from his own points, 8 from alice, and 17 from charlie
-		bob = await getUser('bob');
+		bob = await getUser('bob', undefined, { points: true });
 		expect(bob!.ownPoints).toBe(825n);
 		const bobsFinalPoints = await getPoints('bob');
 		expect(bobsFinalPoints).toHaveLength(2);

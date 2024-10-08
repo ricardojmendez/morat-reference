@@ -80,9 +80,9 @@ async function debitPoints(
 	const fromAssignedPointsTransfer = totalNum - fromOwnPointsTransfer;
 
 	const pointsResult: UserPoints[] = [];
-
 	if (total > 0n) {
-		const keysToDelete = new Set<string>();
+		const pointsAfterDeduct = [];
+
 		for (const userPoints of senderPoints) {
 			const pointSegment =
 				(Number(userPoints.points) / senderPointTally) *
@@ -91,27 +91,21 @@ async function debitPoints(
 			const pointsToWithdraw = BigInt(Math.ceil(pointSegment));
 
 			if (pointsToWithdraw <= 0 && pointsToTransfer <= 0) {
+				pointsAfterDeduct.push({
+					assignerId: userPoints.assignerId,
+					points: userPoints.points,
+					epoch,
+				});
 				continue;
 			}
 
-			const fromKey = userPoints.assignerId;
 			const newUserPoints = {
-				fromKey,
+				assignerId: userPoints.assignerId,
 				points: userPoints.points - pointsToWithdraw,
 				epoch,
 			};
 			if (newUserPoints.points > 0) {
-				await tx.userPoints.update({
-					where: {
-						ownerId_assignerId: { assignerId: fromKey, ownerId: user.key },
-					},
-					data: {
-						points: newUserPoints.points,
-						epoch,
-					},
-				});
-			} else {
-				keysToDelete.add(fromKey);
+				pointsAfterDeduct.push(newUserPoints);
 			}
 
 			// We don't allow points transfer from one user to the themselves, or a transfer below the minimum,
@@ -121,25 +115,23 @@ async function debitPoints(
 			}
 
 			pointsResult.push({
-				assignerId: fromKey,
+				assignerId: userPoints.assignerId,
 				points: pointsToTransfer,
 				epoch,
 			});
 		}
 
-		// Let's not modify the group while iterating over it.
-		await tx.userPoints.deleteMany({
-			where: {
-				ownerId: user.key,
-				assignerId: { in: Array.from(keysToDelete) },
+		await tx.user.update({
+			where: { key: user.key },
+			data: {
+				ownPoints: user.ownPoints - BigInt(fromOwnPointsTransfer),
+				points: {
+					deleteMany: {},
+					create: pointsAfterDeduct,
+				},
 			},
 		});
 	}
-
-	await tx.user.update({
-		where: { key: user.key },
-		data: { ownPoints: user.ownPoints - BigInt(fromOwnPointsTransfer) },
-	});
 
 	pointsResult.push({
 		assignerId: user.key,
