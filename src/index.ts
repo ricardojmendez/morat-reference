@@ -74,11 +74,15 @@ const app = new Elysia()
 	.post(
 		'/user/:encodedId',
 		async ({ body, params: { encodedId }, error }) => {
-			const id = decodeURIComponent(encodedId);
-			const { optsIn } = body ?? {};
-			return (await userExists(id))
-				? error(409, 'User already exists')
-				: await createUser(id, currentEpoch, optsIn ?? true);
+			try {
+				const id = decodeURIComponent(encodedId);
+				const { optsIn } = body ?? {};
+				return (await userExists(id))
+					? error(409, 'User already exists')
+					: await createUser(id, currentEpoch, optsIn ?? true);
+			} catch (e) {
+				return error(500, `Unknown exception`);
+			}
 		},
 		{
 			params: StringID,

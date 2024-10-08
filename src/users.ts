@@ -21,7 +21,35 @@ export async function getUser(
 	include = {}
 ): Promise<User | null> {
 	const client = tx ?? prisma;
-	return await client.user.findUnique({ where: { key: id }, include });
+	if (!tx) {
+		return await client.user.findUnique({ where: { key: id }, include });
+	} else {
+		const result = await client.$queryRaw<
+			User[]
+		>`SELECT * FROM "User" WHERE "key" = ${id} FOR UPDATE`;
+		const user = result.length > 0 ? result[0] : null;
+
+		if (user && Object.keys(include).length > 0) {
+			const includedData: any = {};
+
+			// @ts-ignore
+			if (include.points) {
+				includedData.points = await client.$queryRaw<UserPoints[]>`
+                    SELECT * FROM "UserPoints" WHERE "ownerId" = ${id} FOR UPDATE
+                `;
+			}
+
+			// @ts-ignore
+			if (include.assigned) {
+				includedData.assigned = await client.$queryRaw<UserPoints[]>`
+                    SELECT * FROM "UserPoints" WHERE "assignerId" = ${id} FOR UPDATE
+                `;
+			}
+
+			return { ...user, ...includedData };
+		}
+		return user;
+	}
 }
 
 export async function topUpPoints(

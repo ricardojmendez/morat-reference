@@ -364,7 +364,7 @@ export async function assignPoints(
 			return AssignResult.Ok;
 		},
 		{
-			isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+			isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
 		}
 	);
 
