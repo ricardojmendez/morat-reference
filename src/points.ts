@@ -335,28 +335,24 @@ export async function assignPoints(
         This duplicates some of the validations from assignPointsWorker because we need to 
         verify the point amount before we deduct Morat's points.
      */
+	const senderUser = await getUser(sender);
+	if (!senderUser) {
+		return AssignResult.SenderDoesNotExist;
+	}
+
+	const senderPoints = await getPoints(sender);
+	const senderAssignedPoints = tallyPoints(Array.from(senderPoints.values()));
+	const fromTotalPoints = senderAssignedPoints + senderUser.ownPoints;
+	if (fromTotalPoints < points) {
+		return AssignResult.NotEnoughPoints;
+	}
+
+	// Now we can transfer
+	const pointsToReceiver = BigInt(Math.ceil(Number(points) * (1 - MORAT_PCT)));
+	const pointsToMorat = points - pointsToReceiver;
+
 	const result = await prisma.$transaction(
 		async (tx) => {
-			const senderUser = await getUser(sender, tx);
-			if (!senderUser) {
-				return AssignResult.SenderDoesNotExist;
-			}
-
-			const senderPoints = await getPoints(sender, tx);
-			const senderAssignedPoints = tallyPoints(
-				Array.from(senderPoints.values())
-			);
-			const fromTotalPoints = senderAssignedPoints + senderUser.ownPoints;
-			if (fromTotalPoints < points) {
-				return AssignResult.NotEnoughPoints;
-			}
-
-			// Now we can transfer
-			const pointsToReceiver = BigInt(
-				Math.ceil(Number(points) * (1 - MORAT_PCT))
-			);
-			const pointsToMorat = points - pointsToReceiver;
-
 			const result = await assignPointsWorker(
 				tx,
 				sender,
