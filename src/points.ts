@@ -368,7 +368,13 @@ export async function assignPoints(
 				return result;
 			}
 			if (pointsToMorat > 0) {
-				return assignPointsWorker(tx, sender, MORAT_USER, pointsToMorat, epoch);
+				return await assignPointsWorker(
+					tx,
+					sender,
+					MORAT_USER,
+					pointsToMorat,
+					epoch
+				);
 			}
 			return AssignResult.Ok;
 		},
