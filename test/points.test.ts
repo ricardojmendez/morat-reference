@@ -9,7 +9,14 @@ import {
 	getQueuedPoints,
 	tallyPoints,
 	AssignResult,
+	UserPointAssignment,
 } from '../src/points';
+
+const sortPoints = (p: UserPointAssignment) => ({
+	assignerId: p.assignerId,
+	epoch: p.epoch,
+	points: p.points.sort((a, b) => a.assignerId.localeCompare(b.assignerId)),
+});
 
 describe('tally', () => {
 	test('works as expected', () => {
@@ -807,11 +814,7 @@ describe('epoch tick', () => {
 		const antiPoints = await getPoints('anti');
 		expect(antiPoints).toBeEmpty();
 		// Sort them to make sure we getthem on easy-to-copare order
-		const awaitingAntiEpoch3 = await getQueuedPoints('anti').map((p) => ({
-			assignerId: p.assignerId,
-			epoch: p.epoch,
-			points: p.points.sort((a, b) => a.assignerId.localeCompare(b.assignerId)),
-		}));
+		const awaitingAntiEpoch3 = await getQueuedPoints('anti').map(sortPoints);
 
 		expect(awaitingAntiEpoch3).toHaveLength(2);
 		expect(awaitingAntiEpoch3).toContainAllValues([

@@ -15,7 +15,7 @@ export type UserPoints = {
 	epoch: bigint;
 };
 
-type UserPointAssignment = {
+export type UserPointAssignment = {
 	assignerId: string;
 	epoch: bigint;
 	points: UserPoints[];
@@ -154,47 +154,44 @@ async function creditPoints(
 	points: UserPoints[],
 	epoch: bigint
 ) {
-	for (const userPoint of points) {
+	const finalPoints =
+		user.points?.map((point) => ({
+			assignerId: point.assignerId,
+			points: point.points,
+			epoch: point.epoch,
+		})) ?? [];
+	for (const toCredit of points) {
 		// User will not receive points from themselves
 		if (
-			user.key == userPoint.assignerId ||
-			userPoint.points < MIN_POINT_TRANSFER
+			user.key == toCredit.assignerId ||
+			toCredit.points < MIN_POINT_TRANSFER
 		) {
 			continue;
 		}
 
-		const pointRecord = await tx.userPoints.findUnique({
-			where: {
-				ownerId_assignerId: {
-					assignerId: userPoint.assignerId,
-					ownerId: user.key,
-				},
-			},
-		});
+		const pointRecord = finalPoints.find(
+			(point) => point.assignerId == toCredit.assignerId
+		);
 		if (!pointRecord) {
-			await tx.userPoints.create({
-				data: {
-					assignerId: userPoint.assignerId,
-					ownerId: user.key,
-					points: userPoint.points,
-					epoch,
-				},
+			finalPoints.push({
+				assignerId: toCredit.assignerId,
+				points: toCredit.points,
+				epoch,
 			});
 		} else {
-			await tx.userPoints.update({
-				where: {
-					ownerId_assignerId: {
-						assignerId: userPoint.assignerId,
-						ownerId: user.key,
-					},
-				},
-				data: {
-					points: pointRecord.points + userPoint.points,
-					epoch,
-				},
-			});
+			pointRecord.points += toCredit.points;
+			pointRecord.epoch = epoch;
 		}
 	}
+	await tx.user.update({
+		where: { key: user.key },
+		data: {
+			points: {
+				deleteMany: {},
+				create: finalPoints,
+			},
+		},
+	});
 }
 
 export enum AssignResult {
@@ -220,7 +217,7 @@ export async function claimPoints(
 	pointClaimIdx: number,
 	epoch: bigint
 ): Promise<AssignResult> {
-	const user = await getUser(userKey);
+	const user = await getUser(userKey, undefined, { points: true });
 	if (!user) {
 		return AssignResult.ReceiverDoesNotExist;
 	}
@@ -279,7 +276,7 @@ async function assignPointsWorker(
 
 	const sender = await getUser(senderKey, tx, { points: true });
 	// We don't need to get the receiver within the transaction because we don't modify it.
-	const receiver = await getUser(receiverKey);
+	const receiver = await getUser(receiverKey, tx, { points: true });
 
 	if (!sender) {
 		return AssignResult.SenderDoesNotExist;
@@ -303,7 +300,7 @@ async function assignPointsWorker(
 	if (toCredit.length == 0) {
 		return AssignResult.DeductFailed;
 	}
-	const blockedUsers = await getBlockedUsers(receiverKey);
+	const blockedUsers = await getBlockedUsers(receiverKey, tx);
 	if (receiver.optsIn && !blockedUsers.has(senderKey)) {
 		await creditPoints(tx, receiver, toCredit, epoch);
 	} else {

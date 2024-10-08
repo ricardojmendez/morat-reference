@@ -106,9 +106,13 @@ export async function unblockUser(blocker: string, blockee: string) {
 	});
 }
 
-export async function getBlockedUsers(blocker: string): Promise<Set<string>> {
+export async function getBlockedUsers(
+	blocker: string,
+	tx?: Prisma.TransactionClient
+): Promise<Set<string>> {
+	const client = tx ?? prisma;
 	const list = (
-		await prisma.blockList.findMany({
+		await client.blockList.findMany({
 			where: { blockerId: blocker },
 			select: { blockedId: true },
 		})
