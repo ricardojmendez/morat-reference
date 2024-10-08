@@ -14,18 +14,18 @@ import {
 describe('tally', () => {
 	test('works as expected', () => {
 		const total = tallyPoints([
-			{ fromKey: 'a', points: 100n, epoch: 0n },
-			{ fromKey: 'b', points: 200n, epoch: 1n },
+			{ assignerId: 'a', points: 100n, epoch: 0n },
+			{ assignerId: 'b', points: 200n, epoch: 1n },
 		]);
 		expect(total).toBe(300n);
 	});
 
 	test('does not care about key or epoch', () => {
 		const total = tallyPoints([
-			{ fromKey: 'a', points: 100n, epoch: 0n },
-			{ fromKey: 'b', points: 200n, epoch: 1n },
-			{ fromKey: 'a', points: 33n, epoch: 1n },
-			{ fromKey: 'b', points: 92n, epoch: 4n },
+			{ assignerId: 'a', points: 100n, epoch: 0n },
+			{ assignerId: 'b', points: 200n, epoch: 1n },
+			{ assignerId: 'a', points: 33n, epoch: 1n },
+			{ assignerId: 'b', points: 92n, epoch: 4n },
 		]);
 		expect(total).toBe(425n);
 	});
@@ -37,7 +37,7 @@ describe('assign - basic', async () => {
 		await createUser('sender', 0n);
 		await createUser('receiver', 0n);
 		const result = await assignPoints('sender', 'receiver', 20n, 0n);
-        const sender = await getUser('sender');
+		const sender = await getUser('sender');
 		expect(result).toBe(AssignResult.Ok);
 		expect(sender!.ownPoints).toBe(980n);
 	});
@@ -52,7 +52,7 @@ describe('assign - basic', async () => {
 		await createUser('sender', 0n);
 		const result = await assignPoints('sender', 'receiver', 20n, 0n);
 		expect(result).toBe(AssignResult.ReceiverDoesNotExist);
-        const sender = await getUser('sender');
+		const sender = await getUser('sender');
 		expect(sender!.ownPoints).toBe(1000n);
 	});
 
@@ -77,7 +77,7 @@ describe('assign - basic', async () => {
 		await createUser('receiver', 0n);
 		const result = await assignPoints('sender', 'receiver', 1001n, 0n);
 		expect(result).toBe(AssignResult.NotEnoughPoints);
-        const sender = await getUser('sender');
+		const sender = await getUser('sender');
 		expect(sender!.ownPoints).toBe(1000n);
 	});
 });
@@ -90,15 +90,19 @@ describe('assign - transfer', () => {
 		const result = await assignPoints('sender', 'receiver', 20n, 1n);
 		expect(result).toBe(AssignResult.Ok);
 		// Sender gets everything deducted from his own points
-        const sender = await getUser('sender');
-        const receiver = await getUser('receiver');
+		const sender = await getUser('sender');
+		const receiver = await getUser('receiver');
 		expect(sender!.ownPoints).toBe(980n);
 		// Own points of the receiver do not change
 		expect(receiver!.ownPoints).toBe(1000n);
 		// Receiver points are tagged as from the sender
 		const receiverPoints = await getPoints('receiver');
 		const fromSender = receiverPoints[0];
-		expect(fromSender).toEqual({ fromKey: 'sender', points: 20n, epoch: 1n });
+		expect(fromSender).toEqual({
+			assignerId: 'sender',
+			points: 20n,
+			epoch: 1n,
+		});
 		// Point tally is 20, because we only got one transfer
 		const tally = tallyPoints(receiverPoints);
 		expect(tally).toBe(20n);
@@ -110,13 +114,13 @@ describe('assign - transfer', () => {
 		await createUser('receiver', 0n);
 		const result = await assignPoints('sender', 'receiver', 1n, 0n);
 		expect(result).toBe(AssignResult.Ok);
-        const sender = await getUser('sender');
+		const sender = await getUser('sender');
 		expect(sender!.ownPoints).toBe(999n);
 		const receiverPoints = await getPoints('receiver');
 		const tally = tallyPoints(receiverPoints);
 		expect(receiverPoints).toHaveLength(1);
 		expect(receiverPoints[0]).toEqual({
-			fromKey: 'sender',
+			assignerId: 'sender',
 			points: 1n,
 			epoch: 0n,
 		});
@@ -130,10 +134,10 @@ describe('assign - transfer', () => {
 		let charlie = await createUser('charlie', 0n);
 		expect(await assignPoints('alice', 'bob', 20n, 1n)).toBe(AssignResult.Ok);
 		expect(await assignPoints('charlie', 'bob', 31n, 3n)).toBe(AssignResult.Ok);
-        // Reload users
-        alice = await getUser('alice');
-        bob = await getUser('bob');
-        charlie = await getUser('charlie');
+		// Reload users
+		alice = await getUser('alice');
+		bob = await getUser('bob');
+		charlie = await getUser('charlie');
 		// Sender gets everything deducted from his own points
 		expect(alice!.ownPoints).toBe(980n);
 		expect(charlie!.ownPoints).toBe(969n);
@@ -145,10 +149,43 @@ describe('assign - transfer', () => {
 		expect(tally).toBe(51n);
 		// Bob's received points have the right tags
 		const receiverPoints = await getPoints('bob');
-		const fromAlice = receiverPoints.find((p) => p.fromKey === 'alice');
-		expect(fromAlice).toEqual({ fromKey: 'alice', points: 20n, epoch: 1n });
-		const fromCharlie = receiverPoints.find((p) => p.fromKey === 'charlie');
-		expect(fromCharlie).toEqual({ fromKey: 'charlie', points: 31n, epoch: 3n });
+		const fromAlice = receiverPoints.find((p) => p.assignerId === 'alice');
+		expect(fromAlice).toEqual({ assignerId: 'alice', points: 20n, epoch: 1n });
+		const fromCharlie = receiverPoints.find((p) => p.assignerId === 'charlie');
+		expect(fromCharlie).toEqual({
+			assignerId: 'charlie',
+			points: 31n,
+			epoch: 3n,
+		});
+	});
+
+	test('we can request points when we get the user', async () => {
+		await clearPointsAndUsers();
+		let alice = await createUser('alice', 0n);
+		let bob = await createUser('bob', 0n);
+		let charlie = await createUser('charlie', 0n);
+		expect(await assignPoints('alice', 'bob', 20n, 1n)).toBe(AssignResult.Ok);
+		expect(await assignPoints('charlie', 'bob', 31n, 3n)).toBe(AssignResult.Ok);
+		// Reload users
+		alice = await getUser('alice');
+		bob = await getUser('bob');
+		charlie = await getUser('charlie');
+		// Sender gets everything deducted from his own points
+		expect(alice!.ownPoints).toBe(980n);
+		expect(charlie!.ownPoints).toBe(969n);
+		// Own points of the receiver do not change
+		expect(bob!.ownPoints).toBe(1000n);
+		// Bob's point tally adds up
+		bob = await getUser('bob', undefined, { points: true });
+		const bobPoints = bob!.points!;
+		const tally = tallyPoints(bobPoints);
+		expect(tally).toBe(51n);
+		const fromAlice = bobPoints.find((p) => p.assignerId === 'alice');
+		expect(fromAlice?.points).toEqual(20n);
+		expect(fromAlice?.epoch).toEqual(1n);
+		const fromCharlie = bobPoints.find((p) => p.assignerId === 'charlie');
+		expect(fromCharlie?.points).toEqual(31n);
+		expect(fromCharlie?.epoch).toEqual(3n);
 	});
 
 	test('points stream forward proportionally', async () => {
@@ -158,9 +195,11 @@ describe('assign - transfer', () => {
 		await createUser('charlie', 0n);
 		await createUser('zeno', 0n);
 		expect(await assignPoints('alice', 'bob', 50n, 1n)).toBe(AssignResult.Ok);
-		expect(await assignPoints('charlie', 'bob', 100n, 3n)).toBe(AssignResult.Ok);
+		expect(await assignPoints('charlie', 'bob', 100n, 3n)).toBe(
+			AssignResult.Ok
+		);
 		// Bob's point tally adds up
-        let bob = await getUser('bob');
+		let bob = await getUser('bob');
 		const bobsPoints = await getPoints('bob');
 		expect(bob!.ownPoints).toBe(1000n);
 		const preTally = tallyPoints(bobsPoints);
@@ -168,39 +207,39 @@ describe('assign - transfer', () => {
 		expect(await assignPoints('bob', 'zeno', 200n, 4n)).toBe(AssignResult.Ok);
 		// Bob's points got deducted proportionally across the spectrum, with
 		// 174 coming from his own points, 8 from alice, and 17 from charlie
-        bob = await getUser('bob');
+		bob = await getUser('bob');
 		expect(bob!.ownPoints).toBe(825n);
 		const bobsFinalPoints = await getPoints('bob');
 		expect(bobsFinalPoints).toHaveLength(2);
 		expect(bobsFinalPoints).toContainEqual({
-			fromKey: 'alice',
+			assignerId: 'alice',
 			points: 41n,
 			epoch: 4n,
 		});
 		expect(bobsFinalPoints).toContainEqual({
-			fromKey: 'charlie',
+			assignerId: 'charlie',
 			points: 82n,
 			epoch: 4n,
 		});
 		expect(tallyPoints(bobsFinalPoints)).toBe(123n);
 		// Zeno got a total of 197 points, proportionally taken from Bob's points
 		// and the points Bob got from Alice and Charlie. Three points went to Morat.
-        const zeno = await getUser('zeno');
+		const zeno = await getUser('zeno');
 		expect(zeno!.ownPoints).toBe(1000n);
 		const zenosFinalPoints = await getPoints('zeno');
 		expect(zenosFinalPoints).toHaveLength(3);
 		expect(zenosFinalPoints).toContainEqual({
-			fromKey: 'alice',
+			assignerId: 'alice',
 			points: 8n,
 			epoch: 4n,
 		});
 		expect(zenosFinalPoints).toContainEqual({
-			fromKey: 'bob',
+			assignerId: 'bob',
 			points: 173n,
 			epoch: 4n,
 		});
 		expect(zenosFinalPoints).toContainEqual({
-			fromKey: 'charlie',
+			assignerId: 'charlie',
 			points: 16n,
 			epoch: 4n,
 		});
@@ -208,12 +247,12 @@ describe('assign - transfer', () => {
 		const moratsFinalPoints = await getPoints('morat');
 		expect(moratsFinalPoints).toHaveLength(2);
 		expect(moratsFinalPoints).toContainEqual({
-			fromKey: 'bob',
+			assignerId: 'bob',
 			points: 2n,
 			epoch: 4n,
 		});
 		expect(moratsFinalPoints).toContainEqual({
-			fromKey: 'charlie',
+			assignerId: 'charlie',
 			points: 1n,
 			epoch: 3n,
 		});
@@ -228,9 +267,9 @@ describe('assign - transfer', () => {
 		await assignPoints('alice', 'bob', 20n, 1n);
 		const result = await assignPoints('bob', 'alice', 100n, 1n);
 		expect(result).toBe(AssignResult.Ok);
-        // Load users
-        const alice = await getUser('alice');
-        const bob = await getUser('bob');
+		// Load users
+		const alice = await getUser('alice');
+		const bob = await getUser('bob');
 		// Sender's own points did not get altered after the initial assign
 		expect(alice!.ownPoints).toBe(980n); // Alice only got
 		// Bob needs to have 1000 points deducted, proportional to the shares he
@@ -239,8 +278,8 @@ describe('assign - transfer', () => {
 		expect(bob!.ownPoints).toBe(901n);
 		// Receiver points are tagged as from the sender
 		const bobPoints = await getPoints('bob');
-		const fromAlice = bobPoints.find((p) => p.fromKey === 'alice');
-		expect(fromAlice).toEqual({ fromKey: 'alice', points: 19n, epoch: 1n });
+		const fromAlice = bobPoints.find((p) => p.assignerId === 'alice');
+		expect(fromAlice).toEqual({ assignerId: 'alice', points: 19n, epoch: 1n });
 		// Bob's point tally is 19 after deducting the 1 point that got wiped
 		const bobTally = tallyPoints(bobPoints);
 		expect(bobTally).toBe(19n);
@@ -258,17 +297,21 @@ describe('assign - morat', () => {
 		await createUser('receiver', 0n);
 		const result = await assignPoints('sender', 'receiver', 10n, 1n);
 		expect(result).toBe(AssignResult.Ok);
-        // Loads users
-        const sender = await getUser('sender');
-        const receiver = await getUser('receiver');
-		// Sender gets everything deducted from his own points        
+		// Loads users
+		const sender = await getUser('sender');
+		const receiver = await getUser('receiver');
+		// Sender gets everything deducted from his own points
 		expect(sender!.ownPoints).toBe(990n);
 		// Own points of the receiver do not change
 		expect(receiver!.ownPoints).toBe(1000n);
 		// Receiver points are tagged as from the sender
 		const receiverPoints = await getPoints('receiver');
 		const fromSender = receiverPoints[0];
-		expect(fromSender).toEqual({ fromKey: 'sender', points: 10n, epoch: 1n });
+		expect(fromSender).toEqual({
+			assignerId: 'sender',
+			points: 10n,
+			epoch: 1n,
+		});
 		// Point tally is 99, because 1% goes to Morat
 		const tally = tallyPoints(receiverPoints);
 		expect(tally).toBe(10n);
@@ -290,9 +333,9 @@ describe('assign - morat', () => {
 		await createUser('receiver', 0n);
 		const result = await assignPoints('sender', 'receiver', 100n, 1n);
 		expect(result).toBe(AssignResult.Ok);
-        // Load users
-        const sender = await getUser('sender');
-        const receiver = await getUser('receiver');
+		// Load users
+		const sender = await getUser('sender');
+		const receiver = await getUser('receiver');
 		// Sender gets everything deducted from his own points
 		expect(sender!.ownPoints).toBe(900n);
 		// Own points of the receiver do not change
@@ -300,14 +343,18 @@ describe('assign - morat', () => {
 		// Receiver points are tagged as from the sender
 		const receiverPoints = await getPoints('receiver');
 		const fromSender = receiverPoints[0];
-		expect(fromSender).toEqual({ fromKey: 'sender', points: 99n, epoch: 1n });
+		expect(fromSender).toEqual({
+			assignerId: 'sender',
+			points: 99n,
+			epoch: 1n,
+		});
 		// Point tally is 99, because 1% goes to Morat
 		const tally = tallyPoints(receiverPoints);
 		expect(tally).toBe(99n);
 		// Morat has one point
 		const moratPoints = await getPoints('morat');
 		expect(moratPoints[0]).toEqual({
-			fromKey: 'sender',
+			assignerId: 'sender',
 			points: 1n,
 			epoch: 1n,
 		});
@@ -322,9 +369,9 @@ describe('assign - opt-in', async () => {
 		await createUser('receiver', 0n, true);
 		const result = await assignPoints('sender', 'receiver', 25n, 1n);
 		expect(result).toBe(AssignResult.Ok);
-        // Load users
-        const sender = await getUser('sender');
-        const receiver = await getUser('receiver');
+		// Load users
+		const sender = await getUser('sender');
+		const receiver = await getUser('receiver');
 		// Sender gets everything deducted from his own points
 		expect(sender!.ownPoints).toBe(975n);
 		// Own points of the receiver do not change
@@ -332,7 +379,11 @@ describe('assign - opt-in', async () => {
 		// Receiver points are tagged as from the sender
 		const receiverPoints = await getPoints('receiver');
 		const fromSender = receiverPoints[0];
-		expect(fromSender).toEqual({ fromKey: 'sender', points: 25n, epoch: 1n });
+		expect(fromSender).toEqual({
+			assignerId: 'sender',
+			points: 25n,
+			epoch: 1n,
+		});
 		// Point tally is 25, because we only got one transfer
 		const tally = tallyPoints(receiverPoints);
 		expect(tally).toBe(25n);
@@ -344,9 +395,9 @@ describe('assign - opt-in', async () => {
 		await createUser('receiver', 0n, false);
 		const result = await assignPoints('sender', 'receiver', 25n, 1n);
 		expect(result).toBe(AssignResult.Ok);
-        // Load users
-        const sender = await getUser('sender');
-        const receiver = await getUser('receiver');
+		// Load users
+		const sender = await getUser('sender');
+		const receiver = await getUser('receiver');
 		// Sender gets everything deducted from his own points, even if the receiver hasn't claimed them
 		expect(sender!.ownPoints).toBe(975n);
 		// Own points of the receiver do not change
@@ -369,8 +420,8 @@ describe('assign - opt-in', async () => {
 
 		const charliePointsPre = await getPoints('charlie');
 		expect(charliePointsPre).toContainValues([
-			{ fromKey: 'alice', points: 2n, epoch: 1n },
-			{ fromKey: 'bob', points: 147n, epoch: 1n },
+			{ assignerId: 'alice', points: 2n, epoch: 1n },
+			{ assignerId: 'bob', points: 147n, epoch: 1n },
 		]);
 
 		// Anti refuses to opt into point assignments
@@ -380,17 +431,17 @@ describe('assign - opt-in', async () => {
 
 		const result = await assignPoints('charlie', 'anti', 100n, 1n);
 		expect(result).toBe(AssignResult.Ok);
-		// Sender gets everything deducted from his own points, even if the receiver hasn't claimed them        
-        const charlie = await getUser('charlie');
+		// Sender gets everything deducted from his own points, even if the receiver hasn't claimed them
+		const charlie = await getUser('charlie');
 		expect(charlie!.ownPoints).toBe(912n);
 		const charliePointsPost = await getPoints('charlie');
 		expect(charliePointsPost).toContainValues([
-			{ fromKey: 'alice', points: 1n, epoch: 1n },
-			{ fromKey: 'bob', points: 135n, epoch: 1n },
+			{ assignerId: 'alice', points: 1n, epoch: 1n },
+			{ assignerId: 'bob', points: 135n, epoch: 1n },
 		]);
 
 		// Own points of the receiver do not change
-        const anti = await getUser('anti');
+		const anti = await getUser('anti');
 		expect(anti!.ownPoints).toBe(1000n);
 		// Receiver points are tagged as from the sender
 		const antiPoints = await getPoints('anti');
@@ -399,12 +450,12 @@ describe('assign - opt-in', async () => {
 		const awaitingAntiPost = await getQueuedPoints('anti');
 		expect(awaitingAntiPost).toContainValues([
 			{
-				fromKey: 'charlie',
+				assignerId: 'charlie',
 				epoch: 1n,
 				points: [
 					// Notice that the fractional deducted point from alice gets lost
-					{ fromKey: 'bob', points: 11n, epoch: 1n },
-					{ fromKey: 'charlie', points: 87n, epoch: 1n },
+					{ assignerId: 'bob', points: 11n, epoch: 1n },
+					{ assignerId: 'charlie', points: 87n, epoch: 1n },
 				],
 			},
 		]);
@@ -421,8 +472,8 @@ describe('assign - opt-in', async () => {
 
 		const charliePointsPre = await getPoints('charlie');
 		expect(charliePointsPre).toContainValues([
-			{ fromKey: 'alice', points: 2n, epoch: 1n },
-			{ fromKey: 'bob', points: 147n, epoch: 1n },
+			{ assignerId: 'alice', points: 2n, epoch: 1n },
+			{ assignerId: 'bob', points: 147n, epoch: 1n },
 		]);
 
 		// Anti refuses to opt into point assignments
@@ -435,15 +486,15 @@ describe('assign - opt-in', async () => {
 			AssignResult.Ok
 		);
 		// Sender gets everything deducted from his own points, even if the receiver hasn't claimed them
-        const charlie = await getUser('charlie');
+		const charlie = await getUser('charlie');
 		expect(charlie!.ownPoints).toBe(781n);
 		const charliePointsPost = await getPoints('charlie');
 		expect(charliePointsPost).toContainValues([
-			{ fromKey: 'bob', points: 116n, epoch: 2n },
+			{ assignerId: 'bob', points: 116n, epoch: 2n },
 		]);
 
 		// Own points of the receiver do not change
-        const anti = await getUser('anti');
+		const anti = await getUser('anti');
 		expect(anti!.ownPoints).toBe(1000n);
 		// Receiver points are tagged as from the sender
 		const antiPoints = await getPoints('anti');
@@ -453,24 +504,24 @@ describe('assign - opt-in', async () => {
 		expect(awaitingAntiPost).toHaveLength(2);
 		expect(awaitingAntiPost).toContainAllValues([
 			{
-				fromKey: 'charlie',
+				assignerId: 'charlie',
 				epoch: 1n,
 				points: [
-					{ fromKey: 'bob', points: 11n, epoch: 1n },
-					{ fromKey: 'charlie', points: 87n, epoch: 1n },
+					{ assignerId: 'bob', points: 11n, epoch: 1n },
+					{ assignerId: 'charlie', points: 87n, epoch: 1n },
 				],
 			},
 			{
-				fromKey: 'charlie',
+				assignerId: 'charlie',
 				epoch: 2n,
 				points: [
 					{
-						fromKey: 'bob',
+						assignerId: 'bob',
 						points: 18n,
 						epoch: 2n,
 					},
 					{
-						fromKey: 'charlie',
+						assignerId: 'charlie',
 						points: 130n,
 						epoch: 2n,
 					},
@@ -500,27 +551,27 @@ describe('assign - blocking', () => {
 		const result = await assignPoints('stalin', 'anti', 100n, 1n);
 		expect(result).toBe(AssignResult.Ok);
 		// Sender gets everything deducted from his own points, even if the receiver hasn't claimed them
-        const stalin = await getUser('stalin');
+		const stalin = await getUser('stalin');
 		expect(stalin!.ownPoints).toBe(912n);
 		const stalinPointsPost = await getPoints('stalin');
 		expect(stalinPointsPost).toContainValues([
-			{ fromKey: 'alice', points: 1n, epoch: 1n },
-			{ fromKey: 'bob', points: 135n, epoch: 1n },
+			{ assignerId: 'alice', points: 1n, epoch: 1n },
+			{ assignerId: 'bob', points: 135n, epoch: 1n },
 		]);
 
 		// Own points of the receiver do not change
-        const anti = await getUser('anti');
+		const anti = await getUser('anti');
 		expect(anti!.ownPoints).toBe(1000n);
 		const antiPoints = await getPoints('anti');
 		// Anti only has the points bob assigned to them
 		expect(antiPoints).toContainAllValues([
 			{
-				fromKey: 'alice',
+				assignerId: 'alice',
 				points: 1n,
 				epoch: 1n,
 			},
 			{
-				fromKey: 'bob',
+				assignerId: 'bob',
 				points: 49n,
 				epoch: 1n,
 			},
@@ -529,12 +580,12 @@ describe('assign - blocking', () => {
 		const awaitingAntiPost = await getQueuedPoints('anti');
 		expect(awaitingAntiPost).toContainValues([
 			{
-				fromKey: 'stalin',
+				assignerId: 'stalin',
 				epoch: 1n,
 				points: [
 					// Notice that the fractional deducted point from alice gets lost
-					{ fromKey: 'bob', points: 11n, epoch: 1n },
-					{ fromKey: 'stalin', points: 87n, epoch: 1n },
+					{ assignerId: 'bob', points: 11n, epoch: 1n },
+					{ assignerId: 'stalin', points: 87n, epoch: 1n },
 				],
 			},
 		]);
@@ -561,16 +612,16 @@ describe('assign - blocking', () => {
 		const result = await assignPoints('stalin', 'anti', 200n, 1n);
 		expect(result).toBe(AssignResult.Ok);
 		// Sender gets everything deducted from his own points, even if the receiver hasn't claimed them
-        const stalin = await getUser('stalin');
+		const stalin = await getUser('stalin');
 		expect(stalin!.ownPoints).toBe(690n);
 		const stalinPointsPost = await getPoints('stalin');
 		expect(stalinPointsPost).toContainValues([
-			{ fromKey: 'alice', points: 3n, epoch: 1n },
-			{ fromKey: 'bob', points: 202n, epoch: 1n },
+			{ assignerId: 'alice', points: 3n, epoch: 1n },
+			{ assignerId: 'bob', points: 202n, epoch: 1n },
 		]);
 
 		// Own points of the receiver do not change
-        const anti = await getUser('anti');
+		const anti = await getUser('anti');
 		expect(anti!.ownPoints).toBe(1000n);
 		const antiPoints = await getPoints('anti');
 		// Anti does have a smattering of points from Stalin, because he got them through Svetlana
@@ -578,12 +629,12 @@ describe('assign - blocking', () => {
 		// anyone who associates themselves with him.
 		expect(antiPoints).toContainAllValues([
 			{
-				fromKey: 'stalin',
+				assignerId: 'stalin',
 				points: 3n,
 				epoch: 1n,
 			},
 			{
-				fromKey: 'svetlana',
+				assignerId: 'svetlana',
 				points: 21n,
 				epoch: 1n,
 			},
@@ -592,12 +643,12 @@ describe('assign - blocking', () => {
 		const awaitingAntiPost = await getQueuedPoints('anti');
 		expect(awaitingAntiPost).toContainValues([
 			{
-				fromKey: 'stalin',
+				assignerId: 'stalin',
 				epoch: 1n,
 				points: [
 					// Notice that the fractional deducted point from alice gets lost
-					{ fromKey: 'bob', points: 44n, epoch: 1n },
-					{ fromKey: 'stalin', points: 153n, epoch: 1n },
+					{ assignerId: 'bob', points: 44n, epoch: 1n },
+					{ assignerId: 'stalin', points: 153n, epoch: 1n },
 				],
 			},
 		]);
@@ -611,7 +662,7 @@ describe('epoch tick', () => {
 		await createUser('bob', 0n);
 		await assignPoints('alice', 'bob', 20n, 1n);
 		await assignPoints('bob', 'alice', 150n, 1n);
-        // Verify the points before the epoch tick
+		// Verify the points before the epoch tick
 		let alice = await getUser('alice');
 		let bob = await getUser('bob');
 		expect(alice!.ownPoints).toBe(980n);
@@ -669,8 +720,8 @@ describe('epoch tick', () => {
 
 		const charliePointsPre = await getPoints('charlie');
 		expect(charliePointsPre).toContainValues([
-			{ fromKey: 'alice', points: 13n, epoch: 1n },
-			{ fromKey: 'bob', points: 136n, epoch: 1n },
+			{ assignerId: 'alice', points: 13n, epoch: 1n },
+			{ assignerId: 'bob', points: 136n, epoch: 1n },
 		]);
 
 		// Anti refuses to opt into point assignments
@@ -683,12 +734,12 @@ describe('epoch tick', () => {
 		expect(awaitingAntiEpoch1).toHaveLength(1);
 		expect(awaitingAntiEpoch1).toContainAllValues([
 			{
-				fromKey: 'charlie',
+				assignerId: 'charlie',
 				epoch: 1n,
 				points: [
-					{ fromKey: 'alice', points: 1n, epoch: 1n },
-					{ fromKey: 'bob', points: 10n, epoch: 1n },
-					{ fromKey: 'charlie', points: 87n, epoch: 1n },
+					{ assignerId: 'alice', points: 1n, epoch: 1n },
+					{ assignerId: 'bob', points: 10n, epoch: 1n },
+					{ assignerId: 'charlie', points: 87n, epoch: 1n },
 				],
 			},
 		]);
@@ -707,21 +758,21 @@ describe('epoch tick', () => {
 		expect(awaitingAntiEpoch3).toHaveLength(2);
 		expect(awaitingAntiEpoch3).toContainAllValues([
 			{
-				fromKey: 'charlie',
+				assignerId: 'charlie',
 				epoch: 1n,
 				points: [
-					{ fromKey: 'alice', points: 1n, epoch: 1n },
-					{ fromKey: 'bob', points: 10n, epoch: 1n },
-					{ fromKey: 'charlie', points: 87n, epoch: 1n },
+					{ assignerId: 'alice', points: 1n, epoch: 1n },
+					{ assignerId: 'bob', points: 10n, epoch: 1n },
+					{ assignerId: 'charlie', points: 87n, epoch: 1n },
 				],
 			},
 			{
-				fromKey: 'charlie',
+				assignerId: 'charlie',
 				epoch: 2n,
 				points: [
-					{ fromKey: 'alice', points: 1n, epoch: 2n },
-					{ fromKey: 'bob', points: 14n, epoch: 2n },
-					{ fromKey: 'charlie', points: 133n, epoch: 2n },
+					{ assignerId: 'alice', points: 1n, epoch: 2n },
+					{ assignerId: 'bob', points: 14n, epoch: 2n },
+					{ assignerId: 'charlie', points: 133n, epoch: 2n },
 				],
 			},
 		]);
@@ -738,8 +789,8 @@ describe('epoch tick', () => {
 
 		const charliePointsPre = await getPoints('charlie');
 		expect(charliePointsPre).toContainValues([
-			{ fromKey: 'alice', points: 13n, epoch: 1n },
-			{ fromKey: 'bob', points: 136n, epoch: 1n },
+			{ assignerId: 'alice', points: 13n, epoch: 1n },
+			{ assignerId: 'bob', points: 136n, epoch: 1n },
 		]);
 
 		// Anti refuses to opt into point assignments
@@ -755,26 +806,31 @@ describe('epoch tick', () => {
 		await epochTick(3n);
 		const antiPoints = await getPoints('anti');
 		expect(antiPoints).toBeEmpty();
-		const awaitingAntiEpoch3 = await getQueuedPoints('anti');
+		// Sort them to make sure we getthem on easy-to-copare order
+		const awaitingAntiEpoch3 = await getQueuedPoints('anti').map((p) => ({
+			assignerId: p.assignerId,
+			epoch: p.epoch,
+			points: p.points.sort((a, b) => a.assignerId.localeCompare(b.assignerId)),
+		}));
 
 		expect(awaitingAntiEpoch3).toHaveLength(2);
 		expect(awaitingAntiEpoch3).toContainAllValues([
 			{
-				fromKey: 'charlie',
+				assignerId: 'charlie',
 				epoch: 1n,
 				points: [
-					{ fromKey: 'alice', points: 1n, epoch: 1n },
-					{ fromKey: 'bob', points: 10n, epoch: 1n },
-					{ fromKey: 'charlie', points: 87n, epoch: 1n },
+					{ assignerId: 'alice', points: 1n, epoch: 1n },
+					{ assignerId: 'bob', points: 10n, epoch: 1n },
+					{ assignerId: 'charlie', points: 87n, epoch: 1n },
 				],
 			},
 			{
-				fromKey: 'charlie',
+				assignerId: 'charlie',
 				epoch: 2n,
 				points: [
-					{ fromKey: 'alice', points: 1n, epoch: 2n },
-					{ fromKey: 'bob', points: 14n, epoch: 2n },
-					{ fromKey: 'charlie', points: 133n, epoch: 2n },
+					{ assignerId: 'alice', points: 1n, epoch: 2n },
+					{ assignerId: 'bob', points: 14n, epoch: 2n },
+					{ assignerId: 'charlie', points: 133n, epoch: 2n },
 				],
 			},
 		]);
@@ -786,19 +842,19 @@ describe('epoch tick', () => {
 		expect(await claimPoints('anti', 1, 4n)).toEqual(AssignResult.Ok);
 		// Since they were claimed quickly, they have only decayed 20%
 		expect(await getPoints('anti')).toContainAllValues([
-			{ fromKey: 'bob', points: 11n, epoch: 4n },
-			{ fromKey: 'charlie', points: 106n, epoch: 4n },
+			{ assignerId: 'bob', points: 11n, epoch: 4n },
+			{ assignerId: 'charlie', points: 106n, epoch: 4n },
 		]);
 		const awaitingAntiEpoch4 = await getQueuedPoints('anti');
 		expect(awaitingAntiEpoch4).toHaveLength(1);
 		expect(awaitingAntiEpoch4).toContainAllValues([
 			{
-				fromKey: 'charlie',
+				assignerId: 'charlie',
 				epoch: 1n,
 				points: [
-					{ fromKey: 'alice', points: 1n, epoch: 1n },
-					{ fromKey: 'bob', points: 10n, epoch: 1n },
-					{ fromKey: 'charlie', points: 87n, epoch: 1n },
+					{ assignerId: 'alice', points: 1n, epoch: 1n },
+					{ assignerId: 'bob', points: 10n, epoch: 1n },
+					{ assignerId: 'charlie', points: 87n, epoch: 1n },
 				],
 			},
 		]);
@@ -807,8 +863,8 @@ describe('epoch tick', () => {
 		expect(await claimPoints('anti', 0, 8n)).toEqual(AssignResult.Ok);
 		// Since they were claimed quickly, they have only decayed 20%
 		expect(await getPoints('anti')).toContainAllValues([
-			{ fromKey: 'bob', points: 13n, epoch: 8n },
-			{ fromKey: 'charlie', points: 132n, epoch: 8n },
+			{ assignerId: 'bob', points: 13n, epoch: 8n },
+			{ assignerId: 'charlie', points: 132n, epoch: 8n },
 		]);
 		// No unclaimed points left
 		expect(await getQueuedPoints('anti')).toBeEmpty();
@@ -825,8 +881,8 @@ describe('epoch tick', () => {
 
 		const charliePointsPre = await getPoints('charlie');
 		expect(charliePointsPre).toContainValues([
-			{ fromKey: 'alice', points: 13n, epoch: 1n },
-			{ fromKey: 'bob', points: 136n, epoch: 1n },
+			{ assignerId: 'alice', points: 13n, epoch: 1n },
+			{ assignerId: 'bob', points: 136n, epoch: 1n },
 		]);
 
 		// Anti refuses to opt into point assignments
@@ -847,21 +903,21 @@ describe('epoch tick', () => {
 		expect(awaitingAntiEpoch3).toHaveLength(2);
 		expect(awaitingAntiEpoch3).toContainAllValues([
 			{
-				fromKey: 'charlie',
+				assignerId: 'charlie',
 				epoch: 1n,
 				points: [
-					{ fromKey: 'alice', points: 1n, epoch: 1n },
-					{ fromKey: 'bob', points: 10n, epoch: 1n },
-					{ fromKey: 'charlie', points: 87n, epoch: 1n },
+					{ assignerId: 'alice', points: 1n, epoch: 1n },
+					{ assignerId: 'bob', points: 10n, epoch: 1n },
+					{ assignerId: 'charlie', points: 87n, epoch: 1n },
 				],
 			},
 			{
-				fromKey: 'charlie',
+				assignerId: 'charlie',
 				epoch: 2n,
 				points: [
-					{ fromKey: 'alice', points: 1n, epoch: 2n },
-					{ fromKey: 'bob', points: 14n, epoch: 2n },
-					{ fromKey: 'charlie', points: 133n, epoch: 2n },
+					{ assignerId: 'alice', points: 1n, epoch: 2n },
+					{ assignerId: 'bob', points: 14n, epoch: 2n },
+					{ assignerId: 'charlie', points: 133n, epoch: 2n },
 				],
 			},
 		]);

@@ -10,13 +10,13 @@ import { prisma } from './prisma';
 import { Prisma } from '@prisma/client';
 
 export type UserPoints = {
-	fromKey: string;
+	assignerId: string;
 	points: bigint;
 	epoch: bigint;
 };
 
 type UserPointAssignment = {
-	fromKey: string;
+	assignerId: string;
 	epoch: bigint;
 	points: UserPoints[];
 };
@@ -60,7 +60,8 @@ async function debitPoints(
 	epoch: bigint
 ): Promise<UserPoints[]> {
 	const senderOwnPoints = Number(user.ownPoints);
-	const senderPoints = await getPoints(user.key, tx);
+	// We asume it was loaded before, or it will fail - this helps reduce queries
+	const senderPoints = user.points ?? [];
 	const senderPointTally = Number(tallyPoints(senderPoints));
 
 	const senderTotalPoints = senderPointTally + senderOwnPoints;
@@ -78,12 +79,11 @@ async function debitPoints(
 	const fromOwnPointsTransfer = Math.ceil(totalNum * fromOwnPointsPct);
 	const fromAssignedPointsTransfer = totalNum - fromOwnPointsTransfer;
 
-	const fromPoints = await getPoints(user.key, tx);
 	const pointsResult: UserPoints[] = [];
 
 	if (total > 0n) {
 		const keysToDelete = new Set<string>();
-		for (const userPoints of fromPoints) {
+		for (const userPoints of senderPoints) {
 			const pointSegment =
 				(Number(userPoints.points) / senderPointTally) *
 				fromAssignedPointsTransfer;
@@ -94,7 +94,7 @@ async function debitPoints(
 				continue;
 			}
 
-			const fromKey = userPoints.fromKey;
+			const fromKey = userPoints.assignerId;
 			const newUserPoints = {
 				fromKey,
 				points: userPoints.points - pointsToWithdraw,
@@ -121,7 +121,7 @@ async function debitPoints(
 			}
 
 			pointsResult.push({
-				fromKey,
+				assignerId: fromKey,
 				points: pointsToTransfer,
 				epoch,
 			});
@@ -142,7 +142,7 @@ async function debitPoints(
 	});
 
 	pointsResult.push({
-		fromKey: user.key,
+		assignerId: user.key,
 		points: BigInt(fromOwnPointsTransfer),
 		epoch,
 	});
@@ -165,7 +165,7 @@ async function creditPoints(
 	for (const userPoint of points) {
 		// User will not receive points from themselves
 		if (
-			user.key == userPoint.fromKey ||
+			user.key == userPoint.assignerId ||
 			userPoint.points < MIN_POINT_TRANSFER
 		) {
 			continue;
@@ -174,7 +174,7 @@ async function creditPoints(
 		const pointRecord = await tx.userPoints.findUnique({
 			where: {
 				ownerId_assignerId: {
-					assignerId: userPoint.fromKey,
+					assignerId: userPoint.assignerId,
 					ownerId: user.key,
 				},
 			},
@@ -182,7 +182,7 @@ async function creditPoints(
 		if (!pointRecord) {
 			await tx.userPoints.create({
 				data: {
-					assignerId: userPoint.fromKey,
+					assignerId: userPoint.assignerId,
 					ownerId: user.key,
 					points: userPoint.points,
 					epoch,
@@ -192,7 +192,7 @@ async function creditPoints(
 			await tx.userPoints.update({
 				where: {
 					ownerId_assignerId: {
-						assignerId: userPoint.fromKey,
+						assignerId: userPoint.assignerId,
 						ownerId: user.key,
 					},
 				},
@@ -250,7 +250,7 @@ export async function claimPoints(
 		if (epochDecay < 1) {
 			const decayed = toAssign.points
 				.map((point) => ({
-					fromKey: point.fromKey,
+					assignerId: point.assignerId,
 					points: BigInt(Math.floor(Number(point.points) * (1 - epochDecay))),
 					epoch: point.epoch,
 				}))
@@ -285,7 +285,7 @@ async function assignPointsWorker(
 		return AssignResult.PointsShouldBePositive;
 	}
 
-	const sender = await getUser(senderKey, tx);
+	const sender = await getUser(senderKey, tx, { points: true });
 	// We don't need to get the receiver within the transaction because we don't modify it.
 	const receiver = await getUser(receiverKey);
 
@@ -297,7 +297,7 @@ async function assignPointsWorker(
 	}
 
 	const senderOwnPoints = sender.ownPoints;
-	const senderPoints = await getPoints(senderKey, tx);
+	const senderPoints = sender.points ?? [];
 	const senderPointTally = tallyPoints(senderPoints);
 
 	const senderTotalPoints = senderPointTally + senderOwnPoints;
@@ -316,7 +316,7 @@ async function assignPointsWorker(
 		await creditPoints(tx, receiver, toCredit, epoch);
 	} else {
 		const queued = getQueuedPoints(receiverKey);
-		queued.push({ fromKey: senderKey, epoch, points: toCredit });
+		queued.push({ assignerId: senderKey, epoch, points: toCredit });
 		queuedAssignments.set(receiverKey, queued);
 	}
 	return AssignResult.Ok;
@@ -335,12 +335,12 @@ export async function assignPoints(
         This duplicates some of the validations from assignPointsWorker because we need to 
         verify the point amount before we deduct Morat's points.
      */
-	const senderUser = await getUser(sender);
+	const senderUser = await getUser(sender, undefined, { points: true });
 	if (!senderUser) {
 		return AssignResult.SenderDoesNotExist;
 	}
 
-	const senderPoints = await getPoints(sender);
+	const senderPoints = senderUser.points ?? [];
 	const senderAssignedPoints = tallyPoints(Array.from(senderPoints.values()));
 	const fromTotalPoints = senderAssignedPoints + senderUser.ownPoints;
 	if (fromTotalPoints < points) {
@@ -463,7 +463,7 @@ export async function getPoints(
 		where: { ownerId: id },
 	});
 	const points: UserPoints[] = dbPoints.map((point) => ({
-		fromKey: point.assignerId,
+		assignerId: point.assignerId,
 		points: point.points,
 		epoch: point.epoch,
 	}));

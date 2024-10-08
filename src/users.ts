@@ -1,4 +1,4 @@
-import { getPoints } from './points';
+import { getPoints, UserPoints } from './points';
 import { prisma } from './prisma';
 import { Prisma } from '@prisma/client';
 
@@ -9,6 +9,7 @@ export type User = {
 	createDate: bigint;
 	timestamp: bigint;
 	optsIn: boolean;
+	points?: UserPoints[];
 };
 
 export const MAX_POINTS = 1000n;
@@ -16,10 +17,11 @@ export const MORAT_USER = 'morat';
 
 export async function getUser(
 	id: string,
-	tx?: Prisma.TransactionClient
+	tx?: Prisma.TransactionClient,
+	include = {}
 ): Promise<User | null> {
 	const client = tx ?? prisma;
-	return await client.user.findUnique({ where: { key: id } });
+	return await client.user.findUnique({ where: { key: id }, include });
 }
 
 export async function topUpPoints(
