@@ -737,7 +737,7 @@ describe('epoch tick', () => {
 		expect(await assignPoints('charlie', 'anti', 100n, 1n)).toBe(
 			AssignResult.Ok
 		);
-		const awaitingAntiEpoch1 = await getQueuedPoints('anti');
+		const awaitingAntiEpoch1 = await getQueuedPoints('anti').map(sortPoints);
 		expect(awaitingAntiEpoch1).toHaveLength(1);
 		expect(awaitingAntiEpoch1).toContainAllValues([
 			{
@@ -751,7 +751,7 @@ describe('epoch tick', () => {
 			},
 		]);
 		await epochTick(2n);
-		const awaitingAntiEpoch2 = await getQueuedPoints('anti');
+		const awaitingAntiEpoch2 = await getQueuedPoints('anti').map(sortPoints);
 		expect(awaitingAntiEpoch2).toContainAllValues(awaitingAntiEpoch1);
 
 		expect(await assignPoints('charlie', 'anti', 150n, 2n)).toBe(
@@ -760,7 +760,7 @@ describe('epoch tick', () => {
 		await epochTick(3n);
 		const antiPoints = await getPoints('anti');
 		expect(antiPoints).toBeEmpty();
-		const awaitingAntiEpoch3 = await getQueuedPoints('anti');
+		const awaitingAntiEpoch3 = await getQueuedPoints('anti').map(sortPoints);
 
 		expect(awaitingAntiEpoch3).toHaveLength(2);
 		expect(awaitingAntiEpoch3).toContainAllValues([
