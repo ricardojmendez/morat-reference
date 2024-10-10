@@ -381,7 +381,7 @@ export async function assignPoints(
 				return AssignResult.Ok;
 			},
 			{
-				isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+				isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
 				maxWait: 50,
 				timeout: 1000,
 			}
