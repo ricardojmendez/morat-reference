@@ -10,6 +10,7 @@ import { prisma } from './prisma';
 import { Prisma } from '@prisma/client';
 
 export type UserPoints = {
+	id?: number;
 	assignerId: string;
 	points: bigint;
 	epoch: bigint;
@@ -79,9 +80,10 @@ async function debitPoints(
 	const fromOwnPointsTransfer = Math.ceil(totalNum * fromOwnPointsPct);
 	const fromAssignedPointsTransfer = totalNum - fromOwnPointsTransfer;
 
-	const pointsResult: UserPoints[] = [];
+	const pointsResult = [];
 	if (total > 0n) {
 		const pointsAfterDeduct = [];
+		const pointsToDelete = [];
 
 		for (const userPoints of senderPoints) {
 			const pointSegment =
@@ -92,20 +94,22 @@ async function debitPoints(
 
 			if (pointsToWithdraw <= 0 && pointsToTransfer <= 0) {
 				pointsAfterDeduct.push({
-					assignerId: userPoints.assignerId,
+					id: userPoints.id!,
 					points: userPoints.points,
 					epoch,
 				});
 				continue;
 			}
 
-			const newUserPoints = {
-				assignerId: userPoints.assignerId,
-				points: userPoints.points - pointsToWithdraw,
-				epoch,
-			};
-			if (newUserPoints.points > 0) {
-				pointsAfterDeduct.push(newUserPoints);
+			const afterDeduct = userPoints.points - pointsToWithdraw;
+			if (afterDeduct > 0) {
+				pointsAfterDeduct.push({
+					id: userPoints.id!,
+					points: afterDeduct,
+					epoch,
+				});
+			} else {
+				pointsToDelete.push(userPoints.id!);
 			}
 
 			// We don't allow points transfer from one user to the themselves, or a transfer below the minimum,
@@ -126,8 +130,13 @@ async function debitPoints(
 			data: {
 				ownPoints: user.ownPoints - BigInt(fromOwnPointsTransfer),
 				points: {
-					deleteMany: {},
-					create: pointsAfterDeduct,
+					deleteMany: {
+						id: { in: pointsToDelete },
+					},
+					updateMany: pointsAfterDeduct.map((p) => ({
+						where: { id: p.id },
+						data: { points: p.points, epoch: p.epoch },
+					})),
 				},
 			},
 		});
@@ -156,6 +165,7 @@ async function creditPoints(
 ) {
 	const finalPoints =
 		user.points?.map((point) => ({
+			id: point.id,
 			assignerId: point.assignerId,
 			points: point.points,
 			epoch: point.epoch,
@@ -174,6 +184,7 @@ async function creditPoints(
 		);
 		if (!pointRecord) {
 			finalPoints.push({
+				id: undefined,
 				assignerId: toCredit.assignerId,
 				points: toCredit.points,
 				epoch,
@@ -187,8 +198,13 @@ async function creditPoints(
 		where: { key: user.key },
 		data: {
 			points: {
-				deleteMany: {},
-				create: finalPoints,
+				updateMany: finalPoints
+					.filter((p) => p.id)
+					.map((p) => ({
+						where: { id: p.id },
+						data: { points: p.points, epoch: p.epoch },
+					})),
+				create: finalPoints.filter((p) => !p.id),
 			},
 		},
 	});
@@ -366,8 +382,8 @@ export async function assignPoints(
 			},
 			{
 				isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-				maxWait: 25,
-				timeout: 100,
+				maxWait: 50,
+				timeout: 1000,
 			}
 		);
 
@@ -486,6 +502,9 @@ export async function registerIntent(
 }
 
 export async function getPendingIntents(startAt = 0, maxCount = 20) {
+	// I could add a distinct to this query, to make sure we don't
+	// get rows that might conflict, but that seems to make the process
+	// slower
 	return await prisma.pointAssignIntent.findMany({
 		orderBy: [{ id: 'asc' }],
 		skip: startAt,
@@ -497,6 +516,9 @@ export async function processIntents(epoch: bigint, maxCount = 20) {
 	try {
 		const pendingIntents = await getPendingIntents(0, maxCount);
 
+		const successfulIdx = [];
+		const irrecoverableErrorIdx = [];
+		const retrySerially = [];
 		// We use the current epoch and discard the original one
 		const assignResults = await Promise.all(
 			pendingIntents.map((p) =>
@@ -504,9 +526,6 @@ export async function processIntents(epoch: bigint, maxCount = 20) {
 			)
 		);
 
-		const successfulIdx = [];
-		const irrecoverableErrorIdx = [];
-		const retrySerialy = [];
 		for (let i = 0; i < assignResults.length; i++) {
 			const result = assignResults[i];
 			if (result === AssignResult.Ok) {
@@ -514,11 +533,11 @@ export async function processIntents(epoch: bigint, maxCount = 20) {
 			} else if (result != AssignResult.UnknownError) {
 				irrecoverableErrorIdx.push(pendingIntents[i].id);
 			} else {
-				retrySerialy.push(pendingIntents[i]);
+				retrySerially.push(pendingIntents[i]);
 			}
 		}
 
-		for (const p of retrySerialy) {
+		for (const p of retrySerially) {
 			const result = await assignPoints(
 				p.assignerId,
 				p.ownerId,
