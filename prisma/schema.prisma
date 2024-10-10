@@ -39,6 +39,7 @@ model BlockList {
 }
 
 model UserPoints {
+    id       Int    @id @default(autoincrement())
     owner    User   @relation(fields: [ownerId], references: [key], name: "owner", onDelete: Cascade)
     assigner User   @relation(fields: [assignerId], references: [key], name: "assigner", onDelete: Cascade)
     points   BigInt
@@ -47,7 +48,7 @@ model UserPoints {
     ownerId    String
     assignerId String
 
-    @@id([ownerId, assignerId])
+    @@unique([ownerId, assignerId])
 }
 
 model PointAssignIntent {
@@ -58,5 +59,5 @@ model PointAssignIntent {
     epoch      BigInt
     createdAt  DateTime @default(now())
     ownerId    String
-    assignerId String
+    assignerId String    
 }
