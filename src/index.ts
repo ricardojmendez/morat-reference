@@ -8,11 +8,12 @@ import {
 	getBlockedUsers,
 } from './users';
 import {
-	assignPoints,
 	claimPoints,
 	AssignResult,
 	epochTick,
 	getPoints,
+	processIntents,
+	registerIntent,
 	tallyPoints,
 } from './points';
 import { html } from '@elysiajs/html';
@@ -150,14 +151,14 @@ const app = new Elysia()
 			try {
 				const from = decodeURIComponent(encodedFrom);
 				const to = decodeURIComponent(encodedTo);
-				const success = await assignPoints(
+				const success = await registerIntent(
 					from,
 					to,
 					BigInt(points),
 					currentEpoch
 				);
-				if (success != AssignResult.Ok) {
-					return error(400, `Invalid points transfer: ${success}`);
+				if (!success) {
+					return error(400, `Could not register point assignment`);
 				}
 				return { success: true };
 			} catch (e) {
@@ -207,3 +208,17 @@ console.log(`🦊 Elysia is running at ${serverPath}`);
 setInterval(() => {
 	app.handle(new Request(`${serverPath}/epoch/tick`, { method: 'POST' }));
 }, EPOCH_SECONDS * 1000);
+
+const pointAssignLoop = async () => {
+	console.log('Processing intents...');
+	try {
+		const start = Date.now();
+		const result = await processIntents(currentEpoch, 10);
+		console.log(`Took ${Date.now() - start}`, result);
+	} catch (e) {
+		console.error(`Update loop error`, e);
+	}
+	setTimeout(pointAssignLoop, 10);
+};
+
+setTimeout(pointAssignLoop, 150);

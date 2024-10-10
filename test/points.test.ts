@@ -5,11 +5,14 @@ import {
 	clearPointsAndUsers,
 	claimPoints,
 	epochTick,
+	getPendingIntents,
 	getPoints,
 	getQueuedPoints,
+	registerIntent,
 	tallyPoints,
 	AssignResult,
 	UserPointAssignment,
+	processIntents,
 } from '../src/points';
 
 const sortPoints = (p: UserPointAssignment) => ({
@@ -935,5 +938,204 @@ describe('epoch tick', () => {
 		expect(awaitingAntiEpoch12).toContainAllValues(awaitingAntiEpoch3.slice(1));
 		await epochTick(13n);
 		expect(await getQueuedPoints('anti')).toBeEmpty();
+	});
+});
+
+describe('point assign intent', () => {
+	test('attempting to register intent for non-existing users fails', async () => {
+		await clearPointsAndUsers();
+		const result = await registerIntent('non-existent', 'invalid', 10n, 0n);
+		expect(result).toBeUndefined();
+	});
+
+	test('attempting to register intent fails if there is even une non non-existing user', async () => {
+		await clearPointsAndUsers();
+		await createUser('alice', 0n);
+		expect(await registerIntent('alice', 'invalid', 10n, 0n)).toBeUndefined();
+		expect(await registerIntent('invalid', 'alice', 10n, 0n)).toBeUndefined();
+	});
+
+	test('can register an intent for existing users', async () => {
+		await clearPointsAndUsers();
+		await createUser('alice', 0n);
+		await createUser('bob', 0n);
+
+		const result = await registerIntent('alice', 'bob', 10n, 0n);
+		expect(result).toMatchObject({
+			assignerId: 'alice',
+			ownerId: 'bob',
+			epoch: 0n,
+			points: 10n,
+		});
+	});
+
+	test('we get back point intents after creating them', async () => {
+		await clearPointsAndUsers();
+		await createUser('alice', 0n);
+		await createUser('bob', 0n);
+
+		await registerIntent('alice', 'bob', 10n, 0n);
+
+		const result = await getPendingIntents();
+		expect(result).toHaveLength(1);
+		expect(result[0]).toMatchObject({
+			assignerId: 'alice',
+			ownerId: 'bob',
+			epoch: 0n,
+			points: 10n,
+		});
+	});
+
+	test('we get back multiple points', async () => {
+		await clearPointsAndUsers();
+		await createUser('alice', 0n);
+		await createUser('bob', 0n);
+		await createUser('charlie', 0n);
+		await createUser('diane', 0n);
+
+		await registerIntent('alice', 'bob', 1n, 0n);
+		await registerIntent('alice', 'charlie', 2n, 1n);
+		await registerIntent('bob', 'bob', 3n, 2n);
+		await registerIntent('diane', 'bob', 4n, 3n);
+		await registerIntent('charlie', 'bob', 5n, 2n);
+
+		const result = await getPendingIntents();
+		expect(result).toHaveLength(5);
+	});
+
+	test('tests return in creation order', async () => {
+		await clearPointsAndUsers();
+		await createUser('alice', 0n);
+		await createUser('bob', 0n);
+		await createUser('charlie', 0n);
+		await createUser('diane', 0n);
+
+		await registerIntent('alice', 'bob', 1n, 0n);
+		await registerIntent('alice', 'charlie', 2n, 1n);
+		await registerIntent('bob', 'bob', 3n, 2n);
+		await registerIntent('diane', 'bob', 4n, 3n);
+		await registerIntent('charlie', 'bob', 5n, 2n);
+
+		const result = await getPendingIntents();
+		expect(result).toHaveLength(5);
+		expect(result[0]).toMatchObject({
+			assignerId: 'alice',
+			ownerId: 'bob',
+			points: 1n,
+		});
+		expect(result[2]).toMatchObject({
+			assignerId: 'bob',
+			ownerId: 'bob',
+			points: 3n,
+		});
+		expect(result[4]).toMatchObject({
+			assignerId: 'charlie',
+			ownerId: 'bob',
+			points: 5n,
+		});
+	});
+
+	test('we can limit the number returned', async () => {
+		await clearPointsAndUsers();
+		await createUser('alice', 0n);
+		await createUser('bob', 0n);
+		await createUser('charlie', 0n);
+		await createUser('diane', 0n);
+
+		await registerIntent('alice', 'bob', 1n, 0n);
+		await registerIntent('alice', 'charlie', 2n, 1n);
+		await registerIntent('bob', 'bob', 3n, 2n);
+		await registerIntent('diane', 'bob', 4n, 3n);
+		await registerIntent('charlie', 'bob', 5n, 2n);
+
+		const result = await getPendingIntents(0, 3);
+		expect(result).toHaveLength(3);
+		expect(result.map((p) => p.points)).toEqual([1n, 2n, 3n]);
+	});
+
+	test('we can skip ahead', async () => {
+		await clearPointsAndUsers();
+		await createUser('alice', 0n);
+		await createUser('bob', 0n);
+		await createUser('charlie', 0n);
+		await createUser('diane', 0n);
+
+		await registerIntent('alice', 'bob', 1n, 0n);
+		await registerIntent('alice', 'charlie', 2n, 1n);
+		await registerIntent('bob', 'bob', 3n, 2n);
+		await registerIntent('diane', 'bob', 4n, 3n);
+		await registerIntent('charlie', 'bob', 5n, 2n);
+
+		const result = await getPendingIntents(3, 3);
+		expect(result).toHaveLength(2);
+		expect(result.map((p) => p.points)).toEqual([4n, 5n]);
+	});
+
+	test('we can process a batch of assigned intents', async () => {
+		await clearPointsAndUsers();
+		await createUser('alice', 0n);
+		await createUser('bob', 0n);
+		await createUser('charlie', 0n);
+		await createUser('diane', 0n);
+
+		await registerIntent('alice', 'bob', 20n, 0n);
+		await registerIntent('diane', 'charlie', 25n, 1n);
+		await registerIntent('bob', 'charlie', 50n, 2n);
+		await registerIntent('diane', 'bob', 4n, 3n);
+		await registerIntent('charlie', 'bob', 5n, 2n);
+        
+		const indexList = (await getPendingIntents()).map((i) => i.id);
+
+		const result = await processIntents(3n, 2);
+		expect(result).toEqual(indexList.slice(0, 2));
+
+		// Deletes the successful ones
+		const postIndices = (await getPendingIntents()).map((i) => i.id);
+		expect(postIndices).toEqual(indexList.slice(2, 5));
+	});
+
+	test('we delete invalid assignments', async () => {
+		await clearPointsAndUsers();
+		await createUser('alice', 0n);
+		await createUser('bob', 0n);
+		await createUser('charlie', 0n);
+		await createUser('diane', 0n);
+
+		await registerIntent('alice', 'bob', 100000n, 0n);
+		await registerIntent('diane', 'charlie', 25n, 1n);
+		await registerIntent('bob', 'charlie', 50n, 2n);
+		await registerIntent('diane', 'bob', 4n, 3n);
+		await registerIntent('charlie', 'bob', 5n, 2n);
+
+		const indexList = (await getPendingIntents()).map((i) => i.id);
+
+		const result = await processIntents(3n, 2);
+		// Only one success
+		expect(result).toEqual(indexList.slice(1, 2));
+
+		// We deleted both the successful ones and the first invalid assignment
+		const postIndices = (await getPendingIntents()).map((i) => i.id);
+		expect(postIndices).toEqual(indexList.slice(2, 5));
+	});
+
+    test('recoverable errors like deadlocks get retried', async () => {
+		await clearPointsAndUsers();
+		await createUser('alice', 0n);
+		await createUser('bob', 0n);
+		await createUser('charlie', 0n);
+		await createUser('diane', 0n);
+
+		await registerIntent('alice', 'bob', 50n, 0n);
+		await registerIntent('charlie', 'bob', 25n, 1n);
+		await registerIntent('bob', 'alice', 50n, 2n);
+		await registerIntent('diane', 'bob', 4n, 3n);
+		await registerIntent('diane', 'alice', 5n, 2n);
+
+		const indexList = (await getPendingIntents()).map((i) => i.id);
+
+		const result = await processIntents(3n, 50);
+		// It processed all the intents
+		expect(result).toEqual(indexList);
+		expect(await getPendingIntents()).toBeEmpty();
 	});
 });

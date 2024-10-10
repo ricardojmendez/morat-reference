@@ -340,35 +340,42 @@ export async function assignPoints(
 	const pointsToReceiver = BigInt(Math.ceil(Number(points) * (1 - MORAT_PCT)));
 	const pointsToMorat = points - pointsToReceiver;
 
-	const result = await prisma.$transaction(
-		async (tx) => {
-			const result = await assignPointsWorker(
-				tx,
-				sender,
-				receiver,
-				pointsToReceiver,
-				epoch
-			);
-			if (result != AssignResult.Ok) {
-				return result;
-			}
-			if (pointsToMorat > 0) {
-				return await assignPointsWorker(
+	try {
+		const result = await prisma.$transaction(
+			async (tx) => {
+				const result = await assignPointsWorker(
 					tx,
 					sender,
-					MORAT_USER,
-					pointsToMorat,
+					receiver,
+					pointsToReceiver,
 					epoch
 				);
+				if (result != AssignResult.Ok) {
+					return result;
+				}
+				if (pointsToMorat > 0) {
+					return await assignPointsWorker(
+						tx,
+						sender,
+						MORAT_USER,
+						pointsToMorat,
+						epoch
+					);
+				}
+				return AssignResult.Ok;
+			},
+			{
+				isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+				maxWait: 25,
+				timeout: 100,
 			}
-			return AssignResult.Ok;
-		},
-		{
-			isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
-		}
-	);
+		);
 
-	return result ?? AssignResult.UnknownError;
+		return result ?? AssignResult.UnknownError;
+	} catch (e) {
+		// console.error(`Error sending from ${sender} to ${receiver}`, e);
+		return AssignResult.UnknownError;
+	}
 }
 
 /**
@@ -461,4 +468,79 @@ export async function getPoints(
 
 export function getQueuedPoints(id: string): UserPointAssignment[] {
 	return queuedAssignments.get(id) ?? [];
+}
+
+export async function registerIntent(
+	sender: string,
+	receiver: string,
+	points: bigint,
+	epoch: bigint
+) {
+	try {
+		return await prisma.pointAssignIntent.create({
+			data: { assignerId: sender, ownerId: receiver, points, epoch },
+		});
+	} catch {
+		return undefined;
+	}
+}
+
+export async function getPendingIntents(startAt = 0, maxCount = 20) {
+	return await prisma.pointAssignIntent.findMany({
+		orderBy: [{ id: 'asc' }],
+		skip: startAt,
+		take: maxCount,
+	});
+}
+
+export async function processIntents(epoch: bigint, maxCount = 20) {
+	try {
+		const pendingIntents = await getPendingIntents(0, maxCount);
+
+		// We use the current epoch and discard the original one
+		const assignResults = await Promise.all(
+			pendingIntents.map((p) =>
+				assignPoints(p.assignerId, p.ownerId, p.points, epoch)
+			)
+		);
+
+		const successfulIdx = [];
+		const irrecoverableErrorIdx = [];
+		const retrySerialy = [];
+		for (let i = 0; i < assignResults.length; i++) {
+			const result = assignResults[i];
+			if (result === AssignResult.Ok) {
+				successfulIdx.push(pendingIntents[i].id);
+			} else if (result != AssignResult.UnknownError) {
+				irrecoverableErrorIdx.push(pendingIntents[i].id);
+			} else {
+				retrySerialy.push(pendingIntents[i]);
+			}
+		}
+
+		for (const p of retrySerialy) {
+			const result = await assignPoints(
+				p.assignerId,
+				p.ownerId,
+				p.points,
+				epoch
+			);
+			if (result === AssignResult.Ok) {
+				successfulIdx.push(p.id);
+			} else if (result != AssignResult.UnknownError) {
+				irrecoverableErrorIdx.push(p.id);
+			}
+		}
+
+		await prisma.pointAssignIntent.deleteMany({
+			where: {
+				id: { in: [...successfulIdx, ...irrecoverableErrorIdx] },
+			},
+		});
+
+		return successfulIdx.sort((a, b) => a - b);
+	} catch (e) {
+		console.error(`Error processing intents: ${e}`);
+		return [];
+	}
 }
