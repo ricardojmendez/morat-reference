@@ -25,7 +25,7 @@ import path from 'path';
  *
  */
 
-const EPOCH_SECONDS = 10;
+const EPOCH_SECONDS = 4 * 60 * 60;
 
 let currentEpoch = 0n;
 
