@@ -206,19 +206,29 @@ app.handle(new Request(`${serverPath}/user/morat`, { method: 'POST' }));
 console.log(`🦊 Elysia is running at ${serverPath}`);
 
 setInterval(() => {
+	console.log(`Ticking epoch...`);
 	app.handle(new Request(`${serverPath}/epoch/tick`, { method: 'POST' }));
 }, EPOCH_SECONDS * 1000);
 
+let itemCount = 0;
+let loopTime = 0;
+
 const pointAssignLoop = async () => {
-	console.log('Processing intents...');
+	console.log('Processing intents...', currentEpoch);
 	try {
 		const start = Date.now();
-		const result = await processIntents(currentEpoch, 10);
-		console.log(`Took ${Date.now() - start}`, result);
+		const result = await processIntents(currentEpoch, 20);
+		const took = Date.now() - start;
+		loopTime += took;
+		itemCount += result.length;
+		console.log(
+			`Took ${took}ms avg ${(loopTime / itemCount).toFixed(2)}ms per item`,
+			result
+		);
 	} catch (e) {
 		console.error(`Update loop error`, e);
 	}
-	setTimeout(pointAssignLoop, 10);
+	setTimeout(pointAssignLoop, 5);
 };
 
 setTimeout(pointAssignLoop, 150);
