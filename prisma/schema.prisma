@@ -59,5 +59,10 @@ model PointAssignIntent {
     epoch      BigInt
     createdAt  DateTime @default(now())
     ownerId    String
-    assignerId String    
+    assignerId String
+}
+
+model Epoch {
+    id        BigInt      @id
+    timestamp DateTime @default(now())
 }

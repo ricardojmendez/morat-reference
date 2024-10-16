@@ -7,6 +7,7 @@ import {
 	userList,
 	getBlockedUsers,
 } from './users';
+import { getCurrentEpoch, createEpochRecord } from './epochs';
 import {
 	claimPoints,
 	AssignResult,
@@ -27,7 +28,11 @@ import path from 'path';
 
 const EPOCH_SECONDS = 4 * 60 * 60;
 
-let currentEpoch = 0n;
+let currentEpoch = (await getCurrentEpoch()) ?? -1n;
+if (currentEpoch < 0n) {
+	await createEpochRecord(0n);
+	currentEpoch = 0n;
+}
 
 const StringID = t.Object({
 	encodedId: t.String(),

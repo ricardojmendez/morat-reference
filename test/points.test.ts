@@ -14,6 +14,10 @@ import {
 	UserPointAssignment,
 	processIntents,
 } from '../src/points';
+import {
+    getAllEpochs,
+    getCurrentEpoch,
+} from '../src/epochs';
 
 const sortPoints = (p: UserPointAssignment) => ({
 	assignerId: p.assignerId,
@@ -683,6 +687,8 @@ describe('epoch tick', () => {
 		bob = await getUser('bob');
 		expect(alice!.ownPoints).toBe(1000n);
 		expect(bob!.ownPoints).toBe(1000n);
+        // The epoch record got created
+        expect(await getCurrentEpoch()).toBe(1n);
 	});
 
 	test('points decay', async () => {
@@ -717,7 +723,30 @@ describe('epoch tick', () => {
 		expect(tallyPoints(await getPoints('bob'))).toBe(15n);
 		const charliePointsPost = await getPoints('charlie');
 		expect(tallyPoints(charliePointsPost)).toBe(111n);
+        // The epoch record got created
+        expect(await getCurrentEpoch()).toBe(2n);
 	});
+
+	test('we get an epoch record for every epoch ticked', async () => {
+		await clearPointsAndUsers();
+		await createUser('alice', 0n);
+		await createUser('bob', 0n);
+		await createUser('charlie', 0n);
+		await createUser('drew', 0n);
+		// If alice transfers to charlie after having received points from drew,
+		// then she'll end up with fewer assigned points
+		await assignPoints('alice', 'bob', 20n, 1n);
+		await assignPoints('alice', 'charlie', 40n, 1n);
+		await assignPoints('bob', 'charlie', 100n, 1n);
+		// Tick the epoch and decay
+		await epochTick(1n);
+		await epochTick(2n);
+		await epochTick(7n);
+        // The epoch record got created
+        const epochs = await getAllEpochs();
+		expect(epochs).toHaveLength(3);
+		expect(epochs.map((e) => e.id)).toEqual([1n, 2n, 7n]);
+	});    
 
 	test('unclaimed points do not decay per epoch', async () => {
 		await clearPointsAndUsers();

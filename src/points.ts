@@ -6,6 +6,7 @@ import {
 	topUpPoints,
 	User,
 } from './users';
+import { clearEpochs, createEpochRecord } from './epochs';
 import { prisma } from './prisma';
 import { Prisma } from '@prisma/client';
 
@@ -35,6 +36,7 @@ const queuedAssignments: Map<string, UserPointAssignment[]> = new Map();
  */
 export async function clearPointsAndUsers() {
 	await clearUsers();
+	await clearEpochs();
 	queuedAssignments.clear();
 }
 
@@ -463,6 +465,7 @@ export async function epochTick(epoch: bigint) {
 		await topUpPoints(epoch, tx);
 		await decayPoints(epoch, tx);
 		pruneQueuedPoints(epoch);
+		await createEpochRecord(epoch, tx);
 	});
 }
 
@@ -525,6 +528,8 @@ export async function processIntents(epoch: bigint, maxCount = 20) {
 				assignPoints(p.assignerId, p.ownerId, p.points, epoch)
 			)
 		);
+
+		// console.debug(`Found ${pendingIntents.length} intents to process`);
 
 		for (let i = 0; i < assignResults.length; i++) {
 			const result = assignResults[i];
