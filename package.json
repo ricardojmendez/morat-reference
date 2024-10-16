@@ -3,6 +3,7 @@
 	"version": "1.0.50",
 	"scripts": {
 		"test": "echo \"Error: no test specified\" && exit 1",
+        "fixed": "bun run src/index.ts",
 		"dev": "bun run --watch src/index.ts",
         "batch": "bun run --watch src/batchAssign.ts",
 		"prepare": "husky",
