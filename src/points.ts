@@ -405,10 +405,16 @@ export async function assignPoints(
  */
 export async function decayPoints(
 	epoch: bigint,
-	tx?: Prisma.TransactionClient
+	tx?: Prisma.TransactionClient,
+	userIds: string[] = []
 ) {
 	const client = tx ?? prisma;
-	const allPoints = await client.userPoints.findMany({});
+	const allPoints =
+		userIds.length > 0
+			? await client.userPoints.findMany({
+					where: { ownerId: { in: userIds } },
+				})
+			: await client.userPoints.findMany({});
 
 	const pairsToDelete = [];
 	for (const point of allPoints) {
@@ -460,11 +466,31 @@ function pruneQueuedPoints(epoch: bigint) {
 	}
 }
 
-export async function epochTick(epoch: bigint) {
+export async function epochTick(epoch: bigint, userBatchSize = 100000000) {
 	await prisma.$transaction(
 		async (tx) => {
-			await topUpPoints(epoch, tx);
-			await decayPoints(epoch, tx);
+			let pendingUserIds;
+
+			do {
+				pendingUserIds = await tx.user.findMany({
+					where: {
+						epochUpdate: {
+							lt: epoch,
+						},
+					},
+					select: {
+						key: true,
+					},
+					skip: 0,
+					take: userBatchSize,
+				});
+
+				if (pendingUserIds.length > 0) {
+					const ids = pendingUserIds.map((u) => u.key);
+					await topUpPoints(epoch, tx, ids);
+					await decayPoints(epoch, tx, ids);
+				}
+			} while (pendingUserIds.length > 0);
 			pruneQueuedPoints(epoch);
 			await createEpochRecord(epoch, tx);
 		},

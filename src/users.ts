@@ -55,11 +55,13 @@ export async function getUser(
 
 export async function topUpPoints(
 	epoch: bigint,
-	tx?: Prisma.TransactionClient
+	tx?: Prisma.TransactionClient,
+	userIds: string[] = []
 ) {
 	const client = tx ?? prisma;
-	await client.user.updateMany({
+	return await client.user.updateMany({
 		data: { ownPoints: MAX_POINTS, epochUpdate: epoch },
+		where: { key: { in: userIds } },
 	});
 }
 

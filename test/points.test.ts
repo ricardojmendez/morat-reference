@@ -692,6 +692,47 @@ describe('epoch tick', () => {
 		expect(await getCurrentEpoch()).toBe(1n);
 	});
 
+	test('we can tick in batches', async () => {
+		await clearPointsAndUsers();
+
+		const getUserName = (i: number) => `user${i.toString().padStart(3, '0')}`;
+
+		const totalUsers = 100;
+
+		for (let i = 0; i < totalUsers; i++) {
+			await createUser(getUserName(i), 0n);
+		}
+		for (let i = 0; i < totalUsers - 1; i++) {
+			await assignPoints(getUserName(i + 1), getUserName(i), 50n, 0n);
+		}
+		// Verify the points before the epoch tick
+		const ownPointsPre = await prisma.user
+			.findMany({
+				orderBy: [{ key: 'asc' }],
+				select: { ownPoints: true },
+				where: { key: { not: 'morat' } },
+			})
+			.then((users) => users.map((u) => u.ownPoints));
+		expect(ownPointsPre[0]).toBe(1000n);
+		for (let i = 1; i < totalUsers; i++) {
+			expect(ownPointsPre[i]).toBe(950n);
+		}
+		// Tick the epoch in batches
+		await epochTick(1n, 7);
+		// Verify the points after the epoch tick
+		const ownPointsPost = await prisma.user
+			.findMany({
+				select: { ownPoints: true },
+				where: { key: { not: 'morat' } },
+			})
+			.then((users) => users.map((u) => u.ownPoints));
+		for (let i = 0; i < totalUsers; i++) {
+			expect(ownPointsPost[i]).toBe(1000n);
+		}
+		// The epoch record got created
+		expect(await getCurrentEpoch()).toBe(1n);
+	});
+
 	test('points decay', async () => {
 		await clearPointsAndUsers();
 		await createUser('alice', 0n);
