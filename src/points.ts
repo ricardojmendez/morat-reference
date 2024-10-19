@@ -529,9 +529,28 @@ export async function processIntents(epoch: bigint, maxCount = 20) {
 		const successfulIdx = [];
 		const irrecoverableErrorIdx = [];
 		const retrySerially = [];
+		const knownIds = new Set();
+
+		const tryParallel = [];
+		for (const i of pendingIntents) {
+			let known = false;
+			for (const id of [i.ownerId, i.assignerId]) {
+				if (!knownIds.has(id)) {
+					knownIds.add(id);
+				} else {
+					known = true;
+				}
+			}
+			if (!known) {
+				tryParallel.push(i);
+			} else {
+				retrySerially.push(i);
+			}
+		}
+
 		// We use the current epoch and discard the original one
 		const assignResults = await Promise.all(
-			pendingIntents.map((p) =>
+			tryParallel.map((p) =>
 				assignPoints(p.assignerId, p.ownerId, p.points, epoch)
 			)
 		);
