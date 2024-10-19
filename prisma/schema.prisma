@@ -16,6 +16,7 @@ datasource db {
 model User {
     key            String              @id
     epochSignUp    BigInt
+    epochUpdate    BigInt              @default(0)
     ownPoints      BigInt
     createDate     BigInt
     timestamp      BigInt
@@ -63,6 +64,6 @@ model PointAssignIntent {
 }
 
 model Epoch {
-    id        BigInt      @id
+    id        BigInt   @id
     timestamp DateTime @default(now())
 }

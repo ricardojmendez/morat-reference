@@ -14,10 +14,8 @@ import {
 	UserPointAssignment,
 	processIntents,
 } from '../src/points';
-import {
-    getAllEpochs,
-    getCurrentEpoch,
-} from '../src/epochs';
+import { getAllEpochs, getCurrentEpoch } from '../src/epochs';
+import { prisma } from '../src/prisma';
 
 const sortPoints = (p: UserPointAssignment) => ({
 	assignerId: p.assignerId,
@@ -687,8 +685,11 @@ describe('epoch tick', () => {
 		bob = await getUser('bob');
 		expect(alice!.ownPoints).toBe(1000n);
 		expect(bob!.ownPoints).toBe(1000n);
-        // The epoch record got created
-        expect(await getCurrentEpoch()).toBe(1n);
+		// Users's epoch update matches the latest one
+		expect(alice!.epochUpdate).toBe(1n);
+		expect(bob!.epochUpdate).toBe(1n);
+		// The epoch record got created
+		expect(await getCurrentEpoch()).toBe(1n);
 	});
 
 	test('points decay', async () => {
@@ -723,8 +724,13 @@ describe('epoch tick', () => {
 		expect(tallyPoints(await getPoints('bob'))).toBe(15n);
 		const charliePointsPost = await getPoints('charlie');
 		expect(tallyPoints(charliePointsPost)).toBe(111n);
-        // The epoch record got created
-        expect(await getCurrentEpoch()).toBe(2n);
+		// All user epochs match the latest one
+		const epochs = await prisma.user
+			.findMany()
+			.then((users) => users.map((u) => u.epochUpdate));
+		expect(epochs).toContainAllValues([2n, 2n, 2n, 2n, 2n]);
+		// The epoch record got created
+		expect(await getCurrentEpoch()).toBe(2n);
 	});
 
 	test('we get an epoch record for every epoch ticked', async () => {
@@ -742,11 +748,11 @@ describe('epoch tick', () => {
 		await epochTick(1n);
 		await epochTick(2n);
 		await epochTick(7n);
-        // The epoch record got created
-        const epochs = await getAllEpochs();
+		// The epoch record got created
+		const epochs = await getAllEpochs();
 		expect(epochs).toHaveLength(3);
 		expect(epochs.map((e) => e.id)).toEqual([1n, 2n, 7n]);
-	});    
+	});
 
 	test('unclaimed points do not decay per epoch', async () => {
 		await clearPointsAndUsers();
@@ -1112,7 +1118,7 @@ describe('point assign intent', () => {
 		await registerIntent('bob', 'charlie', 50n, 2n);
 		await registerIntent('diane', 'bob', 4n, 3n);
 		await registerIntent('charlie', 'bob', 5n, 2n);
-        
+
 		const indexList = (await getPendingIntents()).map((i) => i.id);
 
 		const result = await processIntents(3n, 2);
@@ -1147,7 +1153,7 @@ describe('point assign intent', () => {
 		expect(postIndices).toEqual(indexList.slice(2, 5));
 	});
 
-    test('recoverable errors like deadlocks get retried', async () => {
+	test('recoverable errors like deadlocks get retried', async () => {
 		await clearPointsAndUsers();
 		await createUser('alice', 0n);
 		await createUser('bob', 0n);

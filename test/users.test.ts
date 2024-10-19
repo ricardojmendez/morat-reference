@@ -27,6 +27,7 @@ describe('creation', () => {
 		const user = await createUser('test-user', 1n);
 		expect(user).toBeDefined();
 		expect(user?.epochSignUp).toBe(1n);
+        expect(user?.epochUpdate).toBe(1n);
 		expect(user?.ownPoints).toBe(1000n);
 		expect(user?.key).toBe('test-user');
 	});

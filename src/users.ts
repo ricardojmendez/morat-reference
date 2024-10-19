@@ -5,6 +5,7 @@ import { Prisma } from '@prisma/client';
 export type User = {
 	key: string;
 	epochSignUp: bigint;
+	epochUpdate: bigint;
 	ownPoints: bigint;
 	createDate: bigint;
 	timestamp: bigint;
@@ -53,12 +54,12 @@ export async function getUser(
 }
 
 export async function topUpPoints(
-	_epoch: bigint,
+	epoch: bigint,
 	tx?: Prisma.TransactionClient
 ) {
 	const client = tx ?? prisma;
 	await client.user.updateMany({
-		data: { ownPoints: MAX_POINTS },
+		data: { ownPoints: MAX_POINTS, epochUpdate: epoch },
 	});
 }
 
@@ -70,6 +71,7 @@ export async function createUser(
 	const user = {
 		key: id,
 		epochSignUp: currentEpoch,
+		epochUpdate: currentEpoch,
 		ownPoints: MAX_POINTS,
 		createDate: BigInt(Date.now()),
 		timestamp: BigInt(Date.now()),
