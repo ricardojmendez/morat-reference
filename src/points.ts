@@ -461,12 +461,19 @@ function pruneQueuedPoints(epoch: bigint) {
 }
 
 export async function epochTick(epoch: bigint) {
-	await prisma.$transaction(async (tx) => {
-		await topUpPoints(epoch, tx);
-		await decayPoints(epoch, tx);
-		pruneQueuedPoints(epoch);
-		await createEpochRecord(epoch, tx);
-	});
+	await prisma.$transaction(
+		async (tx) => {
+			await topUpPoints(epoch, tx);
+			await decayPoints(epoch, tx);
+			pruneQueuedPoints(epoch);
+			await createEpochRecord(epoch, tx);
+		},
+		{
+			isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
+			maxWait: 5000,
+			timeout: 100000,
+		}
+	);
 }
 
 export async function getPoints(
