@@ -7,6 +7,12 @@ Everything is kept in memory. The focus is on testing the mechanics on an easy t
 
 ## Development
 
+This version expects a Postgres database configured with Prisma. You will need to have the connection string on `DATABASE_URL`, and run
+
+```
+bun prisma migrate dev
+```
+
 To start the development server run:
 
 ```bash
@@ -14,6 +20,8 @@ bun run dev --watch
 ```
 
 The REST API is running at http://localhost:3000/ - check [`index.ts`](src/index.ts) for the current implementation.
+
+
 
 ## Behavior notes
 
