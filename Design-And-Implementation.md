@@ -1,5 +1,39 @@
 ## Design considerations
 
+## V0.3.0 (WIP)
+
+We now use Postgres for durable storage. I've run a few tests feeding Morat from the BlueSky Like event stream and I see points spreading through the network as expected.
+
+It has highlighted that, in an environment where a few accounts are very popular, we may end up with accounts that have points assigned from a multitude of accounts.
+
+This table shows the distinct point assignments for only a few accounts:
+
+```
+ count |             ownerId
+-------+----------------------------------
+  8601 | did:plc:z72i7hdynmk6r22z27h6tvur
+  6957 | did:plc:ss7zmsfvuw5wwxefvz5flgbb
+  6369 | did:plc:rugfznmdhcczrhwdtrod4dnt
+  6247 | did:plc:acvjxnp5fsqoq4fwri6wuqj7
+  5603 | did:plc:mf5dzzqkp7fnmby6blfeljwj
+  5343 | did:plc:cxlosfkytw7r75f7wlm3dn7p
+  4934 | did:plc:mymwxdm4zedrqufkotuxn72k
+  4887 | did:plc:nvfposmpmhegtyvhbs75s3pw
+  4671 | did:plc:jt72xztklu3d2chvll2hizr6
+  4415 | did:plc:sndurg3enuxjr2y36nwta2pa
+```
+
+If one of these accounts were in turn to send points to someone, these accounts would in turn end up with thousands of new points assignments created for them.
+
+This data explosion is not only going to make custom scores slow to calculate, but likely also adds a significant amount of noise - we likely only care about the top N contributors of points to an account, and can lump the bottom into an "others" category. That would also likely make this a better fit for storage systems other than a monster RDBMs.
+
+Considerations:
+
+- What is a sensible number of top N point contributors likely varies from scenario to scenario.
+- If an account already has large volume contributors, this would mean that a new account that starts sending them points would always end up lumped into *Others*. It seems that we need to keep the point detail for an epoch, and then only summarize at the end of it, when decaying the points.
+- It's unclear if propagating points from *Others* has any informational value - we may only want to propagate points from the identifiable accounts.
+
+
 ## v0.2.0
 
 Given the fact that this will require a large number of accounts, I thought about using zkcompression, where accounts are much cheaper to create (they use ledger storage). That however only delays the cost.
