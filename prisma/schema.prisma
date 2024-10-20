@@ -1,0 +1,69 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+model User {
+    key            String              @id
+    epochSignUp    BigInt
+    epochUpdate    BigInt              @default(0)
+    ownPoints      BigInt
+    createDate     BigInt
+    timestamp      BigInt
+    optsIn         Boolean             @default(true)
+    blocks         BlockList[]         @relation("blocker")
+    blocked        BlockList[]         @relation("blocked")
+    points         UserPoints[]        @relation("owner")
+    assigned       UserPoints[]        @relation("assigner")
+    intendsAssign  PointAssignIntent[] @relation("assigner")
+    intendedAssign PointAssignIntent[] @relation("owner")
+}
+
+model BlockList {
+    blocker   User     @relation(fields: [blockerId], references: [key], name: "blocker", onDelete: Cascade)
+    blocked   User     @relation(fields: [blockedId], references: [key], name: "blocked", onDelete: Cascade)
+    blockerId String
+    blockedId String
+    blockedAt DateTime @default(now())
+
+    @@id([blockerId, blockedId])
+}
+
+model UserPoints {
+    id       Int    @id @default(autoincrement())
+    owner    User   @relation(fields: [ownerId], references: [key], name: "owner", onDelete: Cascade)
+    assigner User   @relation(fields: [assignerId], references: [key], name: "assigner", onDelete: Cascade)
+    points   BigInt
+    epoch    BigInt
+
+    ownerId    String
+    assignerId String
+
+    @@unique([ownerId, assignerId])
+}
+
+model PointAssignIntent {
+    id         Int      @id @default(autoincrement())
+    owner      User     @relation(fields: [ownerId], references: [key], name: "owner", onDelete: Cascade)
+    assigner   User     @relation(fields: [assignerId], references: [key], name: "assigner", onDelete: Cascade)
+    points     BigInt
+    epoch      BigInt
+    createdAt  DateTime @default(now())
+    ownerId    String
+    assignerId String
+}
+
+model Epoch {
+    id        BigInt   @id
+    timestamp DateTime @default(now())
+}

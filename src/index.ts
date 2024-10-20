@@ -7,12 +7,14 @@ import {
 	userList,
 	getBlockedUsers,
 } from './users';
+import { getCurrentEpoch, createEpochRecord } from './epochs';
 import {
-	assignPoints,
 	claimPoints,
 	AssignResult,
 	epochTick,
 	getPoints,
+	processIntents,
+	registerIntent,
 	tallyPoints,
 } from './points';
 import { html } from '@elysiajs/html';
@@ -24,9 +26,13 @@ import path from 'path';
  *
  */
 
-const EPOCH_SECONDS = 10;
+const EPOCH_SECONDS = 4 * 60 * 60;
 
-let currentEpoch = 0;
+let currentEpoch = (await getCurrentEpoch()) ?? -1n;
+if (currentEpoch < 0n) {
+	await createEpochRecord(0n);
+	currentEpoch = 0n;
+}
 
 const StringID = t.Object({
 	encodedId: t.String(),
@@ -73,23 +79,27 @@ const app = new Elysia()
 	)
 	.post(
 		'/user/:encodedId',
-		({ body, params: { encodedId }, error }) => {
-			const id = decodeURIComponent(encodedId);
-			const { optsIn } = body ?? {};
-			return userExists(id)
-				? error(409, 'User already exists')
-				: createUser(id, currentEpoch, optsIn ?? true);
+		async ({ body, params: { encodedId }, error }) => {
+			try {
+				const id = decodeURIComponent(encodedId);
+				const { optsIn } = body ?? {};
+				return (await userExists(id))
+					? error(409, 'User already exists')
+					: await createUser(id, currentEpoch, optsIn ?? true);
+			} catch (e) {
+				return error(500, `Unknown exception`);
+			}
 		},
 		{
 			params: StringID,
 			body: t.Optional(UserBody),
 		}
 	)
-	.get('/block/:encodedId', ({ params: { encodedId }, error }) => {
+	.get('/block/:encodedId', async ({ params: { encodedId }, error }) => {
 		const blocker = decodeURIComponent(encodedId);
 		return !userExists(blocker)
 			? error(404, 'User not found')
-			: Array.from(getBlockedUsers(blocker));
+			: Array.from(await getBlockedUsers(blocker));
 	})
 	.put(
 		'/block/:encodedBlocker/:encodedBlockee',
@@ -120,16 +130,16 @@ const app = new Elysia()
 	)
 	.get(
 		'/points/:encodedId/tally',
-		({ params: { encodedId }, error }) => {
+		async ({ params: { encodedId }, error }) => {
 			const id = decodeURIComponent(encodedId);
-			const user = getUser(id);
+			const user = await getUser(id);
 			if (!user) {
 				return error(404, 'User not found');
 			}
-			const userPoints = getPoints(id);
+			const userPoints = await getPoints(id);
 			const tally = userPoints
 				? tallyPoints(Array.from(userPoints.values()))
-				: 0;
+				: 0n;
 			return {
 				own: user.ownPoints,
 				assigned: tally,
@@ -142,14 +152,24 @@ const app = new Elysia()
 	)
 	.put(
 		'/points/transfer/:encodedFrom/:encodedTo/:points',
-		({ params: { encodedFrom, encodedTo, points }, error }) => {
-			const from = decodeURIComponent(encodedFrom);
-			const to = decodeURIComponent(encodedTo);
-			const success = assignPoints(from, to, points, currentEpoch);
-			if (success != AssignResult.Ok) {
-				return error(400, `Invalid points transfer: ${success}`);
+		async ({ params: { encodedFrom, encodedTo, points }, error }) => {
+			try {
+				const from = decodeURIComponent(encodedFrom);
+				const to = decodeURIComponent(encodedTo);
+				const success = await registerIntent(
+					from,
+					to,
+					BigInt(points),
+					currentEpoch
+				);
+				if (!success) {
+					return error(400, `Could not register point assignment`);
+				}
+				return { success: true };
+			} catch (e) {
+				console.error(`Exception with points transfer: ${e}`);
+				return error(500, `Unknown exception`);
 			}
-			return { success: true };
 		},
 		{
 			params: t.Object({
@@ -161,10 +181,10 @@ const app = new Elysia()
 	)
 	.put(
 		'/points/claim/:encodedId',
-		({ params: { encodedId }, body, error }) => {
+		async ({ params: { encodedId }, body, error }) => {
 			const id = decodeURIComponent(encodedId);
 			const { index } = body;
-			const result = claimPoints(id, index, currentEpoch);
+			const result = await claimPoints(id, index, currentEpoch);
 			return result == AssignResult.Ok
 				? { success: true }
 				: error(400, `Invalid points claim: ${result}`);
@@ -191,5 +211,29 @@ app.handle(new Request(`${serverPath}/user/morat`, { method: 'POST' }));
 console.log(`🦊 Elysia is running at ${serverPath}`);
 
 setInterval(() => {
+	console.log(`Ticking epoch...`);
 	app.handle(new Request(`${serverPath}/epoch/tick`, { method: 'POST' }));
 }, EPOCH_SECONDS * 1000);
+
+let itemCount = 0;
+let loopTime = 0;
+
+const pointAssignLoop = async () => {
+	console.log('Processing intents...', currentEpoch);
+	try {
+		const start = Date.now();
+		const result = await processIntents(currentEpoch, 40);
+		const took = Date.now() - start;
+		loopTime += took;
+		itemCount += result.length;
+		console.log(
+			`Took ${took}ms avg ${(loopTime / itemCount).toFixed(2)}ms per item`,
+			result
+		);
+	} catch (e) {
+		console.error(`Update loop error`, e);
+	}
+	setTimeout(pointAssignLoop, 5);
+};
+
+setTimeout(pointAssignLoop, 150);

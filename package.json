@@ -3,7 +3,9 @@
 	"version": "1.0.50",
 	"scripts": {
 		"test": "echo \"Error: no test specified\" && exit 1",
+		"fixed": "bun run src/index.ts",
 		"dev": "bun run --watch src/index.ts",
+		"batch": "bun run --watch src/batchAssign.ts",
 		"prepare": "husky",
 		"prettify": "prettier --check './src/**/*.ts'",
 		"prettify:fix": "prettier --write './src/**/*.ts'",
@@ -11,8 +13,10 @@
 	},
 	"dependencies": {
 		"@elysiajs/html": "^1.1.0",
+		"@prisma/client": "^5.21.0",
 		"elysia": "latest",
-		"prettier": "^3.3.3"
+		"prettier": "^3.3.3",
+		"prisma": "^5.21.0"
 	},
 	"devDependencies": {
 		"bun-types": "latest",

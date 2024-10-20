@@ -1,83 +1,161 @@
-import { getPoints } from './points';
+import { getPoints, UserPoints } from './points';
+import { prisma } from './prisma';
+import { Prisma } from '@prisma/client';
 
 export type User = {
 	key: string;
-	epochSignUp: number;
-	ownPoints: number;
-	createDate: number;
-	timestamp: number;
+	epochSignUp: bigint;
+	epochUpdate: bigint;
+	ownPoints: bigint;
+	createDate: bigint;
+	timestamp: bigint;
 	optsIn: boolean;
+	points?: UserPoints[];
 };
 
-export const MAX_POINTS = 1000;
+export const MAX_POINTS = 1000n;
 export const MORAT_USER = 'morat';
 
-const users: Map<string, User> = new Map();
-
-const blockedUsers: Map<string, Set<string>> = new Map();
-
-export function getUser(id: string): User | undefined {
-	return users.get(id);
-}
-
-export function topUpPoints(user: User, _epoch: number): User {
-	user.ownPoints = MAX_POINTS;
-	users.set(user.key, user);
-	return user;
-}
-
-export function createUser(
+export async function getUser(
 	id: string,
-	currentEpoch: number,
-	optsIn = true
-): User {
-	const user = {
-		key: id,
-		epochSignUp: currentEpoch,
-		ownPoints: MAX_POINTS,
-		createDate: Date.now(),
-		timestamp: Date.now(),
-		optsIn,
-	};
-	users.set(id, user);
-	return user;
-}
+	tx?: Prisma.TransactionClient,
+	include = {}
+): Promise<User | null> {
+	const client = tx ?? prisma;
+	if (!tx) {
+		return await client.user.findUnique({ where: { key: id }, include });
+	} else {
+		const result = await client.$queryRaw<
+			User[]
+		>`SELECT * FROM "User" WHERE "key" = ${id} FOR UPDATE`;
+		const user = result.length > 0 ? result[0] : null;
 
-export function userExists(id: string): boolean {
-	return users.has(id);
-}
+		if (user && Object.keys(include).length > 0) {
+			const includedData: any = {};
 
-export function userList(all = true): string[] {
-	const allUsers = Array.from(users.keys());
-	const result = all
-		? allUsers
-		: allUsers.filter((user) => getPoints(user).length > 0);
-	return result;
-}
+			// @ts-ignore
+			if (include.points) {
+				includedData.points = await client.$queryRaw<UserPoints[]>`
+                    SELECT * FROM "UserPoints" WHERE "ownerId" = ${id} FOR UPDATE
+                `;
+			}
 
-export function blockUser(blocker: string, blockee: string): void {
-	if (blockee != 'morat') {
-		const blocked = blockedUsers.get(blocker) ?? new Set();
-		blocked.add(blockee);
-		blockedUsers.set(blocker, blocked);
+			// @ts-ignore
+			if (include.assigned) {
+				includedData.assigned = await client.$queryRaw<UserPoints[]>`
+                    SELECT * FROM "UserPoints" WHERE "assignerId" = ${id} FOR UPDATE
+                `;
+			}
+
+			return { ...user, ...includedData };
+		}
+		return user;
 	}
 }
 
-export function unblockUser(blocker: string, blockee: string): void {
-	const blocked = blockedUsers.get(blocker) ?? new Set();
-	blocked.delete(blockee);
-	blockedUsers.set(blocker, blocked);
+export async function topUpPoints(
+	epoch: bigint,
+	tx?: Prisma.TransactionClient,
+	userIds: string[] = []
+) {
+	const client = tx ?? prisma;
+	return await client.user.updateMany({
+		data: { ownPoints: MAX_POINTS, epochUpdate: epoch },
+		where: { key: { in: userIds } },
+	});
 }
 
-export function getBlockedUsers(blocker: string): Set<string> {
-	return blockedUsers.get(blocker) ?? new Set();
+export async function createUser(
+	id: string,
+	currentEpoch: bigint,
+	optsIn = true
+): Promise<User | null> {
+	const user = {
+		key: id,
+		epochSignUp: currentEpoch,
+		epochUpdate: currentEpoch,
+		ownPoints: MAX_POINTS,
+		createDate: BigInt(Date.now()),
+		timestamp: BigInt(Date.now()),
+		optsIn,
+	};
+	let result: User | null = null;
+	try {
+		result = await prisma.user.create({ data: user });
+		// console.log(createUser);
+	} catch (e) {
+		// console.error(e);
+	}
+	return result;
+}
+
+export async function userExists(id: string): Promise<boolean> {
+	return (
+		(await prisma.user.count({
+			where: { key: id },
+		})) > 0
+	);
+}
+
+export async function userList(all = true): Promise<string[]> {
+	const allUsers = (await prisma.user.findMany({ select: { key: true } })).map(
+		(user) => user.key
+	);
+	const result = all
+		? allUsers
+		: allUsers.filter(async (key) => (await getPoints(key)).length > 0);
+	return result;
+}
+
+export async function blockUser(blocker: string, blockee: string) {
+	if (blockee != 'morat') {
+		const blockerUser = await getUser(blocker);
+		const blockedUser = await getUser(blockee);
+		if (!blockerUser || !blockedUser) {
+			return;
+		}
+
+		const existingBlock = await prisma.blockList.findFirst({
+			where: {
+				blockerId: blocker,
+				blockedId: blockee,
+			},
+		});
+		if (!existingBlock) {
+			await prisma.blockList.create({
+				data: {
+					blockerId: blocker,
+					blockedId: blockee,
+				},
+			});
+		}
+	}
+}
+
+export async function unblockUser(blocker: string, blockee: string) {
+	await prisma.blockList.deleteMany({
+		where: { blockerId: blocker, blockedId: blockee },
+	});
+}
+
+export async function getBlockedUsers(
+	blocker: string,
+	tx?: Prisma.TransactionClient
+): Promise<Set<string>> {
+	const client = tx ?? prisma;
+	const list = (
+		await client.blockList.findMany({
+			where: { blockerId: blocker },
+			select: { blockedId: true },
+		})
+	).map((block) => block.blockedId);
+	return new Set(list);
 }
 
 /**
  * Clear all users from the system. Used since the state is shared between tests.
  */
-export function clearUsers(): void {
-	users.clear();
-	blockedUsers.clear();
-	createUser('morat', 0);
+export async function clearUsers() {
+	await prisma.user.deleteMany({});
+	await createUser('morat', 0n);
 }
