@@ -50,6 +50,8 @@ model UserPoints {
     assignerId String
 
     @@unique([ownerId, assignerId])
+    @@index([ownerId])
+    @@index([assignerId])
 }
 
 model PointAssignIntent {
