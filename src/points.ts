@@ -417,10 +417,11 @@ export async function decayPoints(
 			: await client.userPoints.findMany({});
 
 	const pairsToDelete = [];
+	const updateCalls = [];
 	for (const point of allPoints) {
 		const newPoints = Math.floor(Number(point.points) * (1 - DECAY_RATE));
 		if (newPoints > 0) {
-			await client.userPoints.update({
+			const promise = client.userPoints.update({
 				where: {
 					ownerId_assignerId: {
 						ownerId: point.ownerId,
@@ -432,6 +433,7 @@ export async function decayPoints(
 					epoch,
 				},
 			});
+			updateCalls.push(promise);
 		} else {
 			pairsToDelete.push({
 				ownerId: point.ownerId,
@@ -439,14 +441,23 @@ export async function decayPoints(
 			});
 		}
 	}
-	await client.userPoints.deleteMany({
-		where: {
-			OR: pairsToDelete.map((pair) => ({
-				ownerId: pair.ownerId,
-				assignerId: pair.assignerId,
-			})),
-		},
-	});
+
+	const chunkSize = 1000;
+	for (let i = 0; i < updateCalls.length; i += chunkSize) {
+		const chunk = updateCalls.slice(i, i + chunkSize);
+		await Promise.all(chunk);
+	}
+	for (let i = 0; i < pairsToDelete.length; i += chunkSize) {
+		const chunk = pairsToDelete.slice(i, i + chunkSize);
+		await client.userPoints.deleteMany({
+			where: {
+				OR: chunk.map((pair) => ({
+					ownerId: pair.ownerId,
+					assignerId: pair.assignerId,
+				})),
+			},
+		});
+	}
 }
 
 function pruneQueuedPoints(epoch: bigint) {
