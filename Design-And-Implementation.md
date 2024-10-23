@@ -33,6 +33,8 @@ Considerations:
 - If an account already has large volume contributors, this would mean that a new account that starts sending them points would always end up lumped into *Others*. It seems that we need to keep the point detail for an epoch, and then only summarize at the end of it, when decaying the points.
 - It's unclear if propagating points from *Others* has any informational value - we may only want to propagate points from the identifiable accounts.
 
+See also the new [Performance Considerations](Performance-considerations.md) document.
+
 
 ## v0.2.0
 
