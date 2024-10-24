@@ -156,6 +156,18 @@ async function debitPoints(
 	return pointsResult;
 }
 
+async function getUserPointsForUpdate(
+	user: User,
+	assignerIds: string[],
+	tx: Prisma.TransactionClient
+) {
+	return await tx.$queryRaw<UserPoints[]>`
+                    SELECT * FROM "UserPoints" WHERE "ownerId" = ${user.key}
+                    AND "assignerId" IN (${Prisma.join(assignerIds)})
+                    FOR UPDATE
+                `;
+}
+
 /**
  * Credits a bundle of points to a user account.
  * @param tx Transaction to run the credit in.
@@ -169,8 +181,10 @@ async function creditPoints(
 	points: UserPoints[],
 	epoch: bigint
 ) {
+	const assignerIds = points.map((p) => p.assignerId);
+	const userPoints = await getUserPointsForUpdate(user, assignerIds, tx);
 	const finalPoints =
-		user.points?.map((point) => ({
+		userPoints.map((point) => ({
 			id: point.id,
 			assignerId: point.assignerId,
 			points: point.points,
@@ -315,7 +329,7 @@ async function assignPointsWorker(
 
 	const sender = await getUser(senderKey, tx, { points: true });
 	// We don't need to get the receiver within the transaction because we don't modify it.
-	const receiver = await getUser(receiverKey, tx, { points: true });
+	const receiver = await getUser(receiverKey);
 
 	if (!sender) {
 		return AssignResult.SenderDoesNotExist;
