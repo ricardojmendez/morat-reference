@@ -444,46 +444,8 @@ export async function decayPoints(
 	userIds: string[] = []
 ) {
 	const client = tx ?? prisma;
-	const allPoints =
-		userIds.length > 0
-			? await client.userPoints.findMany({
-					where: { ownerId: { in: userIds } },
-				})
-			: await client.userPoints.findMany({});
 
-	const pairsToDelete = [];
-	const updateCalls = [];
-	for (const point of allPoints) {
-		const newPoints = Math.floor(Number(point.points) * (1 - DECAY_RATE));
-		if (newPoints > 0) {
-			const promise = client.userPoints.update({
-				where: {
-					id: point.id,
-				},
-				data: {
-					points: BigInt(newPoints),
-					epoch,
-				},
-			});
-			updateCalls.push(promise);
-		} else {
-			pairsToDelete.push(point.id);
-		}
-	}
-
-	const chunkSize = 500;
-	for (let i = 0; i < updateCalls.length; i += chunkSize) {
-		const chunk = updateCalls.slice(i, i + chunkSize);
-		await Promise.all(chunk);
-	}
-	for (let i = 0; i < pairsToDelete.length; i += chunkSize) {
-		const chunk = pairsToDelete.slice(i, i + chunkSize);
-		await client.userPoints.deleteMany({
-			where: {
-				id: { in: chunk },
-			},
-		});
-	}
+	await client.$executeRaw`CALL decay_points(${epoch}, ${userIds});`;
 }
 
 function pruneQueuedPoints(epoch: bigint) {
