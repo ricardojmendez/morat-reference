@@ -458,10 +458,7 @@ export async function decayPoints(
 		if (newPoints > 0) {
 			const promise = client.userPoints.update({
 				where: {
-					ownerId_assignerId: {
-						ownerId: point.ownerId,
-						assignerId: point.assignerId,
-					},
+					id: point.id,
 				},
 				data: {
 					points: BigInt(newPoints),
@@ -470,14 +467,11 @@ export async function decayPoints(
 			});
 			updateCalls.push(promise);
 		} else {
-			pairsToDelete.push({
-				ownerId: point.ownerId,
-				assignerId: point.assignerId,
-			});
+			pairsToDelete.push(point.id);
 		}
 	}
 
-	const chunkSize = 1000;
+	const chunkSize = 500;
 	for (let i = 0; i < updateCalls.length; i += chunkSize) {
 		const chunk = updateCalls.slice(i, i + chunkSize);
 		await Promise.all(chunk);
@@ -486,10 +480,7 @@ export async function decayPoints(
 		const chunk = pairsToDelete.slice(i, i + chunkSize);
 		await client.userPoints.deleteMany({
 			where: {
-				OR: chunk.map((pair) => ({
-					ownerId: pair.ownerId,
-					assignerId: pair.assignerId,
-				})),
+				id: { in: chunk },
 			},
 		});
 	}
