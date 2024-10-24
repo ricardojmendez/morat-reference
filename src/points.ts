@@ -42,6 +42,10 @@ export async function clearPointsAndUsers() {
 
 /**
  * Adds up all points from a UserPoints array
+ *
+ * Note: If we are staying with Postgres, it might be better to do this in the database
+ * for performance reasons.
+ *
  * @param userPoints UserPoints to tally up
  * @returns Total accumulated points
  */
@@ -196,6 +200,23 @@ async function creditPoints(
 			pointRecord.epoch = epoch;
 		}
 	}
+	// We just update the points once. If we decide to cache the result as
+	// represented in finalPoints above, we need to keep in mind that the
+	// new elements will not have an id, which would be a problem for future
+	// updates.
+	//
+	// The alternative is to re-query after saving, which will get us the
+	// query hit cost anyway.
+	//
+	// This is a problem for when we do optimization, not for right now.
+	// It may be that a document store is the best way to keep these things
+	// in the end, that way we stop worrying about things like if indices for
+	// a sub-element have been updated and just query for the document.
+	//
+	// Then again, I could also just make my life easier and remove the ID
+	// altogether, using the assignerId/ownerId pair as the primary key (like
+	// I had it before) and just update based on assigner, or simply save the
+	// points as JSON directly on Postgres.
 	await tx.user.update({
 		where: { key: user.key },
 		data: {

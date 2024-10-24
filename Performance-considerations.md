@@ -30,6 +30,19 @@ Some things a k-v system would make harder:
 - Get the users whose points we have yet to decay on this iteration
 - Get the set of unclaimed points that need to be expired altogether
 
+### Moving things to stored procedures
+
+If we do want to stay fully relational, maybe we don't need to retrieve the records, and just commit and rewrite all the point assignment as PL/SQL stored procedures.  Old school.
+
+That would mean I don't need to retrieve them.
+
+But even then, just the query to look up and lock the points from postgres itself can take about 8ms for a user with 4k point records.  That would be stored procedure speed.  Let's say we cut it significantly by only keeping the top 1k points. It may end up dropping to 2-3ms.
+
+So it seems to be about if we want to rewrite this whole thing in PL/SQL, with the main trade-off being that it would sacrifice horizontal scaling, since every point update calculations would hit the database.
+
+Having said that, per-epoch point decay *might* be better done as a stored procedure regardless, as well as user point tally (done as a check to verify the user has enough points to transfer).
+
+
 ### Current state
 
 Then again, this seems to be a somewhat premature optimization and mostly relevant if we want to process a massive number of events, like the entire *like* event firehose from BlueSky.  For smaller datasets, like the network of a subset of users, this will do.
