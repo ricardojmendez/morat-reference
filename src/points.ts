@@ -41,16 +41,22 @@ export async function clearPointsAndUsers() {
 }
 
 /**
- * Adds up all points from a UserPoints array
+ * Returns the total user points assigned to a user.
  *
- * Note: If we are staying with Postgres, it might be better to do this in the database
- * for performance reasons.
- *
- * @param userPoints UserPoints to tally up
- * @returns Total accumulated points
+ * @param ownerId Owner to query for.
+ * @returns Total accumulated points or 0n if it can find no assigned points.
  */
-export function tallyPoints(userPoints: UserPoints[]): bigint {
-	return userPoints.reduce((acc, { points }) => acc + points, 0n);
+export async function tallyAssignedPoints(ownerId: string): Promise<bigint> {
+	const result = await prisma.userPoints.aggregate({
+		_sum: {
+			points: true,
+		},
+		where: {
+			ownerId: ownerId,
+		},
+	});
+
+	return result._sum.points ?? 0n;
 }
 
 /**
@@ -69,7 +75,7 @@ async function debitPoints(
 	const senderOwnPoints = Number(user.ownPoints);
 	// We asume it was loaded before, or it will fail - this helps reduce queries
 	const senderPoints = user.points ?? [];
-	const senderPointTally = Number(tallyPoints(senderPoints));
+	const senderPointTally = Number(await tallyAssignedPoints(user.key));
 
 	const senderTotalPoints = senderPointTally + senderOwnPoints;
 
@@ -339,8 +345,7 @@ async function assignPointsWorker(
 	}
 
 	const senderOwnPoints = sender.ownPoints;
-	const senderPoints = sender.points ?? [];
-	const senderPointTally = tallyPoints(senderPoints);
+	const senderPointTally = await tallyAssignedPoints(sender.key);
 
 	const senderTotalPoints = senderPointTally + senderOwnPoints;
 
@@ -382,8 +387,7 @@ export async function assignPoints(
 		return AssignResult.SenderDoesNotExist;
 	}
 
-	const senderPoints = senderUser.points ?? [];
-	const senderAssignedPoints = tallyPoints(Array.from(senderPoints.values()));
+	const senderAssignedPoints = await tallyAssignedPoints(senderUser.key);
 	const fromTotalPoints = senderAssignedPoints + senderUser.ownPoints;
 	if (fromTotalPoints < points) {
 		return AssignResult.NotEnoughPoints;

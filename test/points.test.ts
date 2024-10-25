@@ -9,7 +9,7 @@ import {
 	getPoints,
 	getQueuedPoints,
 	registerIntent,
-	tallyPoints,
+	tallyAssignedPoints,
 	AssignResult,
 	UserPointAssignment,
 	processIntents,
@@ -21,26 +21,6 @@ const sortPoints = (p: UserPointAssignment) => ({
 	assignerId: p.assignerId,
 	epoch: p.epoch,
 	points: p.points.sort((a, b) => a.assignerId.localeCompare(b.assignerId)),
-});
-
-describe('tally', () => {
-	test('works as expected', () => {
-		const total = tallyPoints([
-			{ assignerId: 'a', points: 100n, epoch: 0n },
-			{ assignerId: 'b', points: 200n, epoch: 1n },
-		]);
-		expect(total).toBe(300n);
-	});
-
-	test('does not care about key or epoch', () => {
-		const total = tallyPoints([
-			{ assignerId: 'a', points: 100n, epoch: 0n },
-			{ assignerId: 'b', points: 200n, epoch: 1n },
-			{ assignerId: 'a', points: 33n, epoch: 1n },
-			{ assignerId: 'b', points: 92n, epoch: 4n },
-		]);
-		expect(total).toBe(425n);
-	});
 });
 
 describe('assign - basic', async () => {
@@ -116,7 +96,7 @@ describe('assign - transfer', () => {
 			epoch: 1n,
 		});
 		// Point tally is 20, because we only got one transfer
-		const tally = tallyPoints(receiverPoints);
+		const tally = await tallyAssignedPoints('receiver');
 		expect(tally).toBe(20n);
 	});
 
@@ -129,13 +109,13 @@ describe('assign - transfer', () => {
 		const sender = await getUser('sender');
 		expect(sender!.ownPoints).toBe(999n);
 		const receiverPoints = await getPoints('receiver');
-		const tally = tallyPoints(receiverPoints);
 		expect(receiverPoints).toHaveLength(1);
 		expect(receiverPoints[0]).toEqual({
 			assignerId: 'sender',
 			points: 1n,
 			epoch: 0n,
 		});
+		const tally = await tallyAssignedPoints('receiver');
 		expect(tally).toBe(1n);
 	});
 
@@ -156,8 +136,7 @@ describe('assign - transfer', () => {
 		// Own points of the receiver do not change
 		expect(bob!.ownPoints).toBe(1000n);
 		// Bob's point tally adds up
-		const bobsPoints = await getPoints('bob');
-		const tally = tallyPoints(bobsPoints);
+		const tally = await tallyAssignedPoints('bob');
 		expect(tally).toBe(51n);
 		// Bob's received points have the right tags
 		const receiverPoints = await getPoints('bob');
@@ -189,9 +168,9 @@ describe('assign - transfer', () => {
 		expect(bob!.ownPoints).toBe(1000n);
 		// Bob's point tally adds up
 		bob = await getUser('bob', undefined, { points: true });
-		const bobPoints = bob!.points!;
-		const tally = tallyPoints(bobPoints);
+		const tally = await tallyAssignedPoints('bob');
 		expect(tally).toBe(51n);
+		const bobPoints = bob!.points!;
 		const fromAlice = bobPoints.find((p) => p.assignerId === 'alice');
 		expect(fromAlice?.points).toEqual(20n);
 		expect(fromAlice?.epoch).toEqual(1n);
@@ -212,9 +191,8 @@ describe('assign - transfer', () => {
 		);
 		// Bob's point tally adds up
 		let bob = await getUser('bob');
-		const bobsPoints = await getPoints('bob');
 		expect(bob!.ownPoints).toBe(1000n);
-		const preTally = tallyPoints(bobsPoints);
+		const preTally = await tallyAssignedPoints('bob');
 		expect(preTally).toBe(149n); // Got one point less because it went to Morat
 		expect(await assignPoints('bob', 'zeno', 200n, 4n)).toBe(AssignResult.Ok);
 		// Bob's points got deducted proportionally across the spectrum, with
@@ -233,7 +211,7 @@ describe('assign - transfer', () => {
 			points: 82n,
 			epoch: 4n,
 		});
-		expect(tallyPoints(bobsFinalPoints)).toBe(123n);
+		expect(await tallyAssignedPoints('bob')).toBe(123n);
 		// Zeno got a total of 197 points, proportionally taken from Bob's points
 		// and the points Bob got from Alice and Charlie. Three points went to Morat.
 		const zeno = await getUser('zeno');
@@ -293,11 +271,10 @@ describe('assign - transfer', () => {
 		const fromAlice = bobPoints.find((p) => p.assignerId === 'alice');
 		expect(fromAlice).toEqual({ assignerId: 'alice', points: 19n, epoch: 1n });
 		// Bob's point tally is 19 after deducting the 1 point that got wiped
-		const bobTally = tallyPoints(bobPoints);
+		const bobTally = await tallyAssignedPoints('bob');
 		expect(bobTally).toBe(19n);
-		// Alice's tally is only 99, because she didn't get her point back
-		const alicePoints = await getPoints('alice');
-		const aliceTally = tallyPoints(alicePoints);
+		// Alice's tally is only 98, because she didn't get her point back
+		const aliceTally = await tallyAssignedPoints('alice');
 		expect(aliceTally).toBe(98n); // 1 point went to Morat
 	});
 });
@@ -325,7 +302,7 @@ describe('assign - morat', () => {
 			epoch: 1n,
 		});
 		// Point tally is 99, because 1% goes to Morat
-		const tally = tallyPoints(receiverPoints);
+		const tally = await tallyAssignedPoints('receiver');
 		expect(tally).toBe(10n);
 		// Morat has one point
 		const moratPoints = await getPoints('morat');
@@ -361,7 +338,7 @@ describe('assign - morat', () => {
 			epoch: 1n,
 		});
 		// Point tally is 99, because 1% goes to Morat
-		const tally = tallyPoints(receiverPoints);
+		const tally = await tallyAssignedPoints('receiver');
 		expect(tally).toBe(99n);
 		// Morat has one point
 		const moratPoints = await getPoints('morat');
@@ -370,7 +347,7 @@ describe('assign - morat', () => {
 			points: 1n,
 			epoch: 1n,
 		});
-		expect(tallyPoints(moratPoints)).toBe(1n);
+		expect(await tallyAssignedPoints('morat')).toBe(1n);
 	});
 });
 
@@ -397,7 +374,7 @@ describe('assign - opt-in', async () => {
 			epoch: 1n,
 		});
 		// Point tally is 25, because we only got one transfer
-		const tally = tallyPoints(receiverPoints);
+		const tally = await tallyAssignedPoints('receiver');
 		expect(tally).toBe(25n);
 	});
 
@@ -417,7 +394,7 @@ describe('assign - opt-in', async () => {
 		// Receiver points are tagged as from the sender
 		const receiverPoints = await getPoints('receiver');
 		expect(receiverPoints).toBeEmpty();
-		const tally = tallyPoints(receiverPoints);
+		const tally = await tallyAssignedPoints('receiver');
 		expect(tally).toBe(0n);
 	});
 
@@ -746,25 +723,22 @@ describe('epoch tick', () => {
 		await assignPoints('bob', 'charlie', 100n, 1n);
 		await assignPoints('drew', 'alice', 1n, 1n);
 		// Check the points before decay
-		expect(tallyPoints(await getPoints('alice'))).toBe(1n);
-		const bobPointsPre = await getPoints('bob');
-		expect(tallyPoints(bobPointsPre)).toBe(19n);
-		const charliePointsPre = await getPoints('charlie');
-		expect(tallyPoints(charliePointsPre)).toBe(139n); // Morat got 1 point
+		expect(await tallyAssignedPoints('alice')).toBe(1n);
+		expect(await tallyAssignedPoints('bob')).toBe(19n);
+		expect(await tallyAssignedPoints('charlie')).toBe(139n); // Morat got 1 point
 		// Tick the epoch and decay
 		await epochTick(1n);
 		const alicePoints = await getPoints('alice');
 		expect(alicePoints).toBeEmpty(); // Empty elements are removed
-		expect(tallyPoints(alicePoints)).toBe(0n);
-		expect(tallyPoints(await getPoints('bob'))).toBe(17n);
-		expect(tallyPoints(await getPoints('charlie'))).toBe(124n); // Morat got 1 point
+		expect(await tallyAssignedPoints('alice')).toBe(0n);
+		expect(await tallyAssignedPoints('bob')).toBe(17n);
+		expect(await tallyAssignedPoints('charlie')).toBe(124n); // Morat got 1 point
 		// Tick the epoch and decay
 		await epochTick(2n);
 		expect(alicePoints).toBeEmpty(); // Empty elements are removed
-		expect(tallyPoints(await getPoints('alice'))).toBe(0n);
-		expect(tallyPoints(await getPoints('bob'))).toBe(15n);
-		const charliePointsPost = await getPoints('charlie');
-		expect(tallyPoints(charliePointsPost)).toBe(111n);
+		expect(await tallyAssignedPoints('alice')).toBe(0n);
+		expect(await tallyAssignedPoints('bob')).toBe(15n);
+		expect(await tallyAssignedPoints('charlie')).toBe(111n);
 		// All user epochs match the latest one
 		const epochs = await prisma.user
 			.findMany()

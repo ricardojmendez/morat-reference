@@ -15,7 +15,7 @@ import {
 	getPoints,
 	processIntents,
 	registerIntent,
-	tallyPoints,
+	tallyAssignedPoints,
 } from './points';
 import { html } from '@elysiajs/html';
 import { promises as fs } from 'fs';
@@ -136,10 +136,7 @@ const app = new Elysia()
 			if (!user) {
 				return error(404, 'User not found');
 			}
-			const userPoints = await getPoints(id);
-			const tally = userPoints
-				? tallyPoints(Array.from(userPoints.values()))
-				: 0n;
+			const tally = await tallyAssignedPoints(id);
 			return {
 				own: user.ownPoints,
 				assigned: tally,
