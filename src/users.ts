@@ -59,10 +59,7 @@ export async function topUpPoints(
 	userIds: string[] = []
 ) {
 	const client = tx ?? prisma;
-	return await client.user.updateMany({
-		data: { ownPoints: MAX_POINTS, epochUpdate: epoch },
-		where: { key: { in: userIds } },
-	});
+	await await client.$executeRaw`CALL top_up_points(${epoch},  ${MAX_POINTS}, ${userIds});`;
 }
 
 export async function createUser(
