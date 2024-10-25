@@ -6,7 +6,7 @@ import {
 	topUpPoints,
 	User,
 } from './users';
-import { clearEpochs, createEpochRecord } from './epochs';
+import { clearEpochs, createEpochRecord, epochExists } from './epochs';
 import { prisma } from './prisma';
 import { Prisma } from '@prisma/client';
 
@@ -465,12 +465,20 @@ function pruneQueuedPoints(epoch: bigint) {
 	}
 }
 
-export async function epochTick(epoch: bigint, userBatchSize = 100000000) {
-	await prisma.$transaction(
-		async (tx) => {
-			let pendingUserIds;
-
-			do {
+export async function epochTick(epoch: bigint, userBatchSize = 100) {
+	let pendingUserIds = [];
+	do {
+		/*
+            We will do period commts of the changes, because if we do it all
+            inside a single transaction we are effectively locking up the entire
+            set of users and user points.            
+         */
+		await prisma.$transaction(
+			async (tx) => {
+				const exists = await epochExists(epoch, tx);
+				if (!exists) {
+					await createEpochRecord(epoch, tx);
+				}
 				pendingUserIds = await tx.user.findMany({
 					where: {
 						epochUpdate: {
@@ -485,27 +493,28 @@ export async function epochTick(epoch: bigint, userBatchSize = 100000000) {
 				});
 
 				if (pendingUserIds.length > 0) {
+					// console.log(`Processing ${pendingUserIds.length} users`);
 					const ids = pendingUserIds.map((u) => u.key);
 					await topUpPoints(epoch, tx, ids);
 					await decayPoints(epoch, tx, ids);
 				}
-			} while (pendingUserIds.length > 0);
-			pruneQueuedPoints(epoch);
-			await createEpochRecord(epoch, tx);
-		},
-		{
-			isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
-			maxWait: 5000,
-			timeout: 100000,
-		}
-	);
+			},
+			{
+				isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
+				maxWait: 5000,
+				timeout: 100000,
+			}
+		);
+	} while (pendingUserIds.length > 0);
+	pruneQueuedPoints(epoch);
+
+	return epoch;
 }
 
 export async function getPoints(
 	id: string,
-	tx?: Prisma.TransactionClient
+	client: Prisma.TransactionClient = prisma
 ): Promise<UserPoints[]> {
-	const client = tx ?? prisma;
 	const dbPoints = await client.userPoints.findMany({
 		where: { ownerId: id },
 	});

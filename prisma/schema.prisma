@@ -27,6 +27,8 @@ model User {
     assigned       UserPoints[]        @relation("assigner")
     intendsAssign  PointAssignIntent[] @relation("assigner")
     intendedAssign PointAssignIntent[] @relation("owner")
+
+    @@index([epochUpdate])
 }
 
 model BlockList {

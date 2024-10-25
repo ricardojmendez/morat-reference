@@ -1,5 +1,7 @@
 import { expect, test, describe } from 'bun:test';
 import {
+	getEpoch,
+	epochExists,
 	getAllEpochs,
 	getCurrentEpoch,
 	clearEpochs,
@@ -29,6 +31,32 @@ describe('creation', () => {
 		await createEpochRecord(8n);
 		const epoch = await getCurrentEpoch();
 		expect(epoch).toEqual(8n);
+	});
+
+	test('we can retrieve an epoch instance', async () => {
+		await clearEpochs();
+		await createEpochRecord(0n);
+		await createEpochRecord(1n);
+		const epoch = await getEpoch(0n);
+		expect(epoch?.id).toEqual(0n);
+	});
+
+	test('we can verify if an epoch exists', async () => {
+		await clearEpochs();
+		await createEpochRecord(0n);
+		await createEpochRecord(1n);
+		await createEpochRecord(2n);
+		await createEpochRecord(4n);
+		expect(await epochExists(2n)).toBeTrue();
+	});
+
+	test('we can confirm if an epoch does not exist', async () => {
+		await clearEpochs();
+		await createEpochRecord(0n);
+		await createEpochRecord(1n);
+		await createEpochRecord(2n);
+		await createEpochRecord(4n);
+		expect(await epochExists(3n)).toBeFalse();
 	});
 
 	test('we can retrieve all epochs created', async () => {

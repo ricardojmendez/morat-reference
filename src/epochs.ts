@@ -13,14 +13,28 @@ export async function getCurrentEpoch() {
 
 export async function createEpochRecord(
 	epoch: bigint,
-	tx?: Prisma.TransactionClient
+	tx: Prisma.TransactionClient = prisma
 ) {
-	const client = tx ?? prisma;
-	await client.epoch.create({
+	await tx.epoch.create({
 		data: {
 			id: epoch,
 		},
 	});
+}
+
+export async function epochExists(
+	epoch: bigint,
+	tx: Prisma.TransactionClient = prisma
+) {
+	const epochInstance = await getEpoch(epoch, tx);
+	return epochInstance !== null;
+}
+
+export async function getEpoch(
+	epoch: bigint,
+	tx: Prisma.TransactionClient = prisma
+) {
+	return await tx.epoch.findFirst({ where: { id: epoch } });
 }
 
 /**
