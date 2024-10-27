@@ -334,7 +334,7 @@ describe('epoch tick', () => {
 		await epochTick(3n);
 		const antiPoints = await getPoints('anti');
 		expect(antiPoints).toBeEmpty();
-		const awaitingAntiEpoch3 = await getQueuedPoints('anti');
+		const awaitingAntiEpoch3 = await getQueuedPoints('anti').map(sortPoints);
 
 		expect(awaitingAntiEpoch3).toHaveLength(2);
 		expect(awaitingAntiEpoch3).toContainAllValues([
