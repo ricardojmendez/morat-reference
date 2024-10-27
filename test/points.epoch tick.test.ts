@@ -388,6 +388,12 @@ describe('epoch tick - keep top N', () => {
 			await assignPoints(username, 'alice', 200n - 5n * BigInt(i), 0n);
 			await assignPoints(username, 'bob', BigInt(i + 1) * 10n, 0n);
 		}
+	};
+
+	test('We only keep top N point assignments after collapsing points', async () => {
+		const keepTopN = 5;
+		const totalTestUsers = keepTopN * 3;
+		await createCollapsibleUserSet(totalTestUsers);
 
 		// Check that the assignment succeeded. Notice the amounts do not equal
 		// the sum of assigned points because some ended up with morat
@@ -398,12 +404,6 @@ describe('epoch tick - keep top N', () => {
 		expect(bobPointsPre).toHaveLength(totalTestUsers);
 		expect(await tallyAssignedPoints('bob')).toBe(1194n);
 		expect(await tallyAssignedPoints(MORAT_USER)).toBe(22n);
-	};
-
-	test('We only keep top N point assignments after collapsing points', async () => {
-		const keepTopN = 5;
-		const totalTestUsers = keepTopN * 3;
-		await createCollapsibleUserSet(totalTestUsers);
 
 		// Collapse the points for all users
 		await collapsePoints(['alice', 'bob'], keepTopN);
@@ -443,5 +443,26 @@ describe('epoch tick - keep top N', () => {
 			getUserName(10 + i)
 		);
 		expect(bobAssigners).toContainAllValues(expectedBobAssigners);
+	});
+
+	test('Epock tick collapses the user points', async () => {
+		const keepTopN = 5;
+		const totalTestUsers = keepTopN * 3;
+		await createCollapsibleUserSet(totalTestUsers);
+
+		await epochTick(1n, 100, keepTopN);
+
+		const alice = await getUser('alice', undefined, { points: true });
+		const bob = await getUser('bob', undefined, { points: true });
+        // We have collapsed the point assignments
+        expect(alice!.points).toHaveLength(keepTopN);
+        expect(bob!.points).toHaveLength(keepTopN);
+		// Alice and bob have others' points, but they have decayed
+		expect(alice?.othersPoints).toBe(1363n);
+		expect(bob?.othersPoints).toBe(494n);        
+		// The total point value has decayed
+		expect(await tallyAssignedPoints('bob')).toBe(1074n);
+		expect(await tallyAssignedPoints('alice')).toBe(2211n);
+		expect(await tallyAssignedPoints(MORAT_USER)).toBe(15n);
 	});
 });

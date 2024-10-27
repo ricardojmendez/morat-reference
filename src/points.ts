@@ -507,7 +507,11 @@ export async function collapsePoints(
 	}
 }
 
-export async function epochTick(epoch: bigint, userBatchSize = 100) {
+export async function epochTick(
+	epoch: bigint,
+	userBatchSize = 100,
+	keepTopN = 1000
+) {
 	let pendingUserIds = [];
 	do {
 		/*
@@ -538,6 +542,7 @@ export async function epochTick(epoch: bigint, userBatchSize = 100) {
 					// console.log(`Processing ${pendingUserIds.length} users`);
 					const ids = pendingUserIds.map((u) => u.key);
 					await topUpPoints(epoch, tx, ids);
+					await collapsePoints(ids, keepTopN, tx);
 					await decayPoints(epoch, tx, ids);
 				}
 			},
