@@ -218,7 +218,7 @@ let loopTime = 0;
 const pointAssignLoop = async () => {
 	try {
 		const start = Date.now();
-		const result = await processIntents(currentEpoch, 75);
+		const result = await processIntents(currentEpoch, 40);
 		const took = Date.now() - start;
 		if (result.length > 0) {
 			loopTime += took;
