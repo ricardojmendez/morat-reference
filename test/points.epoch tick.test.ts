@@ -1,20 +1,22 @@
 import { expect, test, describe } from 'bun:test';
-import { createUser, blockUser, getUser } from '../src/users';
+import { createUser, getUser, MORAT_USER } from '../src/users';
 import {
 	assignPoints,
 	clearPointsAndUsers,
 	claimPoints,
 	epochTick,
-	getPendingIntents,
 	getPoints,
 	getQueuedPoints,
-	registerIntent,
 	tallyAssignedPoints,
 	AssignResult,
 	UserPointAssignment,
-	processIntents,
+	collapsePoints,
 } from '../src/points';
-import { getAllEpochs, getCurrentEpoch } from '../src/epochs';
+import {
+	createEpochRecord,
+	getAllEpochs,
+	getCurrentEpoch,
+} from '../src/epochs';
 import { prisma } from '../src/prisma';
 
 const sortPoints = (p: UserPointAssignment) => ({
@@ -22,6 +24,8 @@ const sortPoints = (p: UserPointAssignment) => ({
 	epoch: p.epoch,
 	points: p.points.sort((a, b) => a.assignerId.localeCompare(b.assignerId)),
 });
+
+const getUserName = (i: number) => `user${i.toString().padStart(3, '0')}`;
 
 describe('epoch tick', () => {
 	test('points are replenished', async () => {
@@ -50,9 +54,6 @@ describe('epoch tick', () => {
 
 	test('we can tick in batches', async () => {
 		await clearPointsAndUsers();
-
-		const getUserName = (i: number) => `user${i.toString().padStart(3, '0')}`;
-
 		const totalUsers = 100;
 
 		for (let i = 0; i < totalUsers; i++) {
@@ -66,7 +67,7 @@ describe('epoch tick', () => {
 			.findMany({
 				orderBy: [{ key: 'asc' }],
 				select: { ownPoints: true },
-				where: { key: { not: 'morat' } },
+				where: { key: { not: MORAT_USER } },
 			})
 			.then((users) => users.map((u) => u.ownPoints));
 		expect(ownPointsPre[0]).toBe(1000n);
@@ -79,7 +80,7 @@ describe('epoch tick', () => {
 		const ownPointsPost = await prisma.user
 			.findMany({
 				select: { ownPoints: true },
-				where: { key: { not: 'morat' } },
+				where: { key: { not: MORAT_USER } },
 			})
 			.then((users) => users.map((u) => u.ownPoints));
 		for (let i = 0; i < totalUsers; i++) {
@@ -367,5 +368,80 @@ describe('epoch tick', () => {
 		expect(awaitingAntiEpoch12).toContainAllValues(awaitingAntiEpoch3.slice(1));
 		await epochTick(13n);
 		expect(await getQueuedPoints('anti')).toBeEmpty();
+	});
+});
+
+describe('epoch tick - keep top N', () => {
+	const createCollapsibleUserSet = async function (totalTestUsers: number) {
+		await clearPointsAndUsers();
+		await createEpochRecord(0n);
+
+		await createUser('alice', 0n);
+		await createUser('bob', 0n);
+
+		// Create a series of test users, and assign points from them to
+		// alice and bob, but in different orders - that way, when we collapse
+		// the points, we will end up with different point assign sets for them
+		for (let i = 0; i < totalTestUsers; i++) {
+			const username = getUserName(i);
+			await createUser(username, 0n);
+			await assignPoints(username, 'alice', 200n - 5n * BigInt(i), 0n);
+			await assignPoints(username, 'bob', BigInt(i + 1) * 10n, 0n);
+		}
+
+		// Check that the assignment succeeded. Notice the amounts do not equal
+		// the sum of assigned points because some ended up with morat
+		const alicePointsPre = await getPoints('alice');
+		expect(alicePointsPre).toHaveLength(totalTestUsers);
+		expect(await tallyAssignedPoints('alice')).toBe(2459n);
+		const bobPointsPre = await getPoints('bob');
+		expect(bobPointsPre).toHaveLength(totalTestUsers);
+		expect(await tallyAssignedPoints('bob')).toBe(1194n);
+		expect(await tallyAssignedPoints(MORAT_USER)).toBe(22n);
+	};
+
+	test('We only keep top N point assignments after collapsing points', async () => {
+		const keepTopN = 5;
+		const totalTestUsers = keepTopN * 3;
+		await createCollapsibleUserSet(totalTestUsers);
+
+		// Collapse the points for all users
+		await collapsePoints(['alice', 'bob'], keepTopN);
+
+		// The total point value should remain the same, because we only
+		// collapsed points but did not tick the epoch
+		expect(await tallyAssignedPoints('bob')).toBe(1194n);
+		expect(await tallyAssignedPoints('alice')).toBe(2459n);
+		expect(await tallyAssignedPoints(MORAT_USER)).toBe(22n);
+
+		// Check that we are only keeping the top N points for alice
+		// But that alice got point assigned to others
+		const alice = await getUser('alice', undefined, { points: true });
+		const alicePoints = alice!.points!;
+		expect(alicePoints).toHaveLength(keepTopN);
+		expect(alice!.othersPoints).toEqual(1515n);
+
+		// Alice only keeps the first 5 assigners, because they were the ones that
+		// assigned the most points to her
+		const aliceAssigners = alicePoints.map((p) => p.assignerId);
+		const expectedAliceAssigners = Array.from({ length: 5 }, (_, i) =>
+			getUserName(i)
+		);
+		expect(aliceAssigners).toContainAllValues(expectedAliceAssigners);
+
+		// Check that we are only keeping the top N points for alice
+		// But that alice got point assigned to others
+		const bob = await getUser('bob', undefined, { points: true });
+		expect(bob!.othersPoints).toEqual(549n);
+		const bobPoints = bob!.points!;
+		expect(bobPoints).toHaveLength(keepTopN);
+
+		// Bob only keeps the last 5 assigners, because they were the ones that
+		// assigned the most points to him
+		const bobAssigners = bobPoints.map((p) => p.assignerId);
+		const expectedBobAssigners = Array.from({ length: 5 }, (_, i) =>
+			getUserName(10 + i)
+		);
+		expect(bobAssigners).toContainAllValues(expectedBobAssigners);
 	});
 });
