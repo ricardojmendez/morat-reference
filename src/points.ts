@@ -46,17 +46,15 @@ export async function clearPointsAndUsers() {
  * @param ownerId Owner to query for.
  * @returns Total accumulated points or 0n if it can find no assigned points.
  */
-export async function tallyAssignedPoints(ownerId: string): Promise<bigint> {
-	const result = await prisma.userPoints.aggregate({
-		_sum: {
-			points: true,
-		},
-		where: {
-			ownerId: ownerId,
-		},
-	});
+export async function tallyAssignedPoints(
+	ownerId: string,
+	client: Prisma.TransactionClient = prisma
+): Promise<bigint> {
+	const result = await client.$queryRaw<
+		[{ tally_assigned_points: bigint }]
+	>`SELECT tally_assigned_points(${ownerId});`;
 
-	return result._sum.points ?? 0n;
+	return result[0].tally_assigned_points;
 }
 
 /**
@@ -73,6 +71,7 @@ async function debitPoints(
 	epoch: bigint
 ): Promise<UserPoints[]> {
 	const senderOwnPoints = Number(user.ownPoints);
+	const senderOthersPoints = Number(user.othersPoints);
 	// We asume it was loaded before, or it will fail - this helps reduce queries
 	const senderPoints = user.points ?? [];
 	const senderPointTally = Number(await tallyAssignedPoints(user.key));
@@ -83,23 +82,29 @@ async function debitPoints(
 		return [];
 	}
 
-	const fromOwnPointsPct = Number(senderOwnPoints) / Number(senderTotalPoints);
+	const fromOwnPointsPct = senderOwnPoints / senderTotalPoints;
+	const fromOthersPointsPct = senderOthersPoints / senderTotalPoints;
 
 	// We do a ceiling on own points because this will skew towards transfering
 	// own points instead of received, so we keep more of what we've been sent,
 	// and subtract those that get replenished every epoch.
 	const totalNum = Number(total);
 	const fromOwnPointsTransfer = Math.ceil(totalNum * fromOwnPointsPct);
-	const fromAssignedPointsTransfer = totalNum - fromOwnPointsTransfer;
+	const fromOthersPointsTransfer = Math.ceil(totalNum * fromOthersPointsPct);
+
+	const fromAssignedPointsTransfer =
+		totalNum - fromOwnPointsTransfer - fromOthersPointsTransfer;
 
 	const pointsResult = [];
 	if (total > 0n) {
 		const pointsAfterDeduct = [];
 		const pointsToDelete = [];
 
+		const assignedPoints = senderPointTally - senderOthersPoints;
+
 		for (const userPoints of senderPoints) {
 			const pointSegment =
-				(Number(userPoints.points) / senderPointTally) *
+				(Number(userPoints.points) / assignedPoints) *
 				fromAssignedPointsTransfer;
 			const pointsToTransfer = BigInt(Math.floor(pointSegment));
 			const pointsToWithdraw = BigInt(Math.ceil(pointSegment));
@@ -141,6 +146,7 @@ async function debitPoints(
 			where: { key: user.key },
 			data: {
 				ownPoints: user.ownPoints - BigInt(fromOwnPointsTransfer),
+				othersPoints: user.othersPoints - BigInt(fromOthersPointsTransfer),
 				points: {
 					deleteMany: {
 						id: { in: pointsToDelete },
@@ -156,7 +162,7 @@ async function debitPoints(
 
 	pointsResult.push({
 		assignerId: user.key,
-		points: BigInt(fromOwnPointsTransfer),
+		points: BigInt(fromOwnPointsTransfer + fromOthersPointsTransfer),
 		epoch,
 	});
 	return pointsResult;
@@ -382,7 +388,7 @@ export async function assignPoints(
         This duplicates some of the validations from assignPointsWorker because we need to 
         verify the point amount before we deduct Morat's points.
      */
-	const senderUser = await getUser(sender, undefined, { points: true });
+	const senderUser = await getUser(sender);
 	if (!senderUser) {
 		return AssignResult.SenderDoesNotExist;
 	}
@@ -469,7 +475,51 @@ function pruneQueuedPoints(epoch: bigint) {
 	}
 }
 
-export async function epochTick(epoch: bigint, userBatchSize = 100) {
+export async function collapsePoints(
+	ids: string[],
+	keepTop = 1000,
+	client: Prisma.TransactionClient = prisma
+) {
+	for (const id of ids) {
+		const user = await getUser(id, client, { points: true });
+		if (!user) {
+			continue;
+		}
+		const userPoints = user.points ?? [];
+
+		const sortedPoints = userPoints.sort((a, b) => Number(b.points - a.points));
+
+		const pointsToCollapse = sortedPoints.slice(keepTop);
+		if (pointsToCollapse.length > 0) {
+			// Add the points to the "others" user or create a new record
+			const pointsToCollapseSum = pointsToCollapse.reduce(
+				(acc, p) => acc + p.points,
+				0n
+			);
+			const pointsToDelete = pointsToCollapse.map((p) => p.id!);
+
+			await client.user.update({
+				where: {
+					key: id,
+				},
+				data: {
+					othersPoints: user.othersPoints + pointsToCollapseSum,
+					points: {
+						deleteMany: {
+							id: { in: pointsToDelete },
+						},
+					},
+				},
+			});
+		}
+	}
+}
+
+export async function epochTick(
+	epoch: bigint,
+	userBatchSize = 100,
+	keepTopN = 1000
+) {
 	let pendingUserIds = [];
 	do {
 		/*
@@ -500,6 +550,7 @@ export async function epochTick(epoch: bigint, userBatchSize = 100) {
 					// console.log(`Processing ${pendingUserIds.length} users`);
 					const ids = pendingUserIds.map((u) => u.key);
 					await topUpPoints(epoch, tx, ids);
+					await collapsePoints(ids, keepTopN, tx);
 					await decayPoints(epoch, tx, ids);
 				}
 			},
@@ -517,16 +568,19 @@ export async function epochTick(epoch: bigint, userBatchSize = 100) {
 
 export async function getPoints(
 	id: string,
-	client: Prisma.TransactionClient = prisma
+	client: Prisma.TransactionClient = prisma,
+	includeIds = false
 ): Promise<UserPoints[]> {
 	const dbPoints = await client.userPoints.findMany({
 		where: { ownerId: id },
 	});
-	const points: UserPoints[] = dbPoints.map((point) => ({
-		assignerId: point.assignerId,
-		points: point.points,
-		epoch: point.epoch,
-	}));
+	const points: UserPoints[] = includeIds
+		? dbPoints
+		: dbPoints.map((point) => ({
+				assignerId: point.assignerId,
+				points: point.points,
+				epoch: point.epoch,
+			}));
 	return points;
 }
 

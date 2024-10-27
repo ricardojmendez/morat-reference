@@ -30,8 +30,9 @@ This data explosion is not only going to make custom scores slow to calculate, b
 Considerations:
 
 - What is a sensible number of top N point contributors likely varies from scenario to scenario.
-- If an account already has large volume contributors, this would mean that a new account that starts sending them points would always end up lumped into *Others*. It seems that we need to keep the point detail for an epoch, and then only summarize at the end of it, when decaying the points.
-- It's unclear if propagating points from *Others* has any informational value - we may only want to propagate points from the identifiable accounts.
+- If an account already has number of point contributors that is > N, this would mean that a new account that starts sending them points would always end up lumped into *Others*. It seems that we need to keep the full point detail for an epoch, and then only summarize at the end of it, when closing the epoch and before decaying the points.
+- It's unclear if propagating points from *Others* has any informational value - we may only want to propagate points from the identifiable accounts or, alternatively, tag the *Others* points as coming from the more immediate sender.
+- If we do the latter, we should still keep them as a separate item instead of lumping them into the user's own points - that way they will also decay and will not be affected by an epoch's reset.
 
 See also the new [Performance Considerations](Performance-considerations.md) document.
 

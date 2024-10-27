@@ -20,6 +20,7 @@ model User {
     ownPoints      BigInt
     createDate     BigInt
     timestamp      BigInt
+    othersPoints   BigInt              @default(0)
     optsIn         Boolean             @default(true)
     blocks         BlockList[]         @relation("blocker")
     blocked        BlockList[]         @relation("blocked")

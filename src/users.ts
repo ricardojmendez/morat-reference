@@ -10,6 +10,7 @@ export type User = {
 	createDate: bigint;
 	timestamp: bigint;
 	optsIn: boolean;
+	othersPoints: bigint;
 	points?: UserPoints[];
 };
 
@@ -105,7 +106,7 @@ export async function userList(all = true): Promise<string[]> {
 }
 
 export async function blockUser(blocker: string, blockee: string) {
-	if (blockee != 'morat') {
+	if (blockee != MORAT_USER) {
 		const blockerUser = await getUser(blocker);
 		const blockedUser = await getUser(blockee);
 		if (!blockerUser || !blockedUser) {
