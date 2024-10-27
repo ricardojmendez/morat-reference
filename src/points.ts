@@ -71,6 +71,7 @@ async function debitPoints(
 	epoch: bigint
 ): Promise<UserPoints[]> {
 	const senderOwnPoints = Number(user.ownPoints);
+	const senderOthersPoints = Number(user.othersPoints);
 	// We asume it was loaded before, or it will fail - this helps reduce queries
 	const senderPoints = user.points ?? [];
 	const senderPointTally = Number(await tallyAssignedPoints(user.key));
@@ -81,23 +82,29 @@ async function debitPoints(
 		return [];
 	}
 
-	const fromOwnPointsPct = Number(senderOwnPoints) / Number(senderTotalPoints);
+	const fromOwnPointsPct = senderOwnPoints / senderTotalPoints;
+	const fromOthersPointsPct = senderOthersPoints / senderTotalPoints;
 
 	// We do a ceiling on own points because this will skew towards transfering
 	// own points instead of received, so we keep more of what we've been sent,
 	// and subtract those that get replenished every epoch.
 	const totalNum = Number(total);
 	const fromOwnPointsTransfer = Math.ceil(totalNum * fromOwnPointsPct);
-	const fromAssignedPointsTransfer = totalNum - fromOwnPointsTransfer;
+	const fromOthersPointsTransfer = Math.ceil(totalNum * fromOthersPointsPct);
+
+	const fromAssignedPointsTransfer =
+		totalNum - fromOwnPointsTransfer - fromOthersPointsTransfer;
 
 	const pointsResult = [];
 	if (total > 0n) {
 		const pointsAfterDeduct = [];
 		const pointsToDelete = [];
 
+		const assignedPoints = senderPointTally - senderOthersPoints;
+
 		for (const userPoints of senderPoints) {
 			const pointSegment =
-				(Number(userPoints.points) / senderPointTally) *
+				(Number(userPoints.points) / assignedPoints) *
 				fromAssignedPointsTransfer;
 			const pointsToTransfer = BigInt(Math.floor(pointSegment));
 			const pointsToWithdraw = BigInt(Math.ceil(pointSegment));
@@ -139,6 +146,7 @@ async function debitPoints(
 			where: { key: user.key },
 			data: {
 				ownPoints: user.ownPoints - BigInt(fromOwnPointsTransfer),
+				othersPoints: user.othersPoints - BigInt(fromOthersPointsTransfer),
 				points: {
 					deleteMany: {
 						id: { in: pointsToDelete },
@@ -154,7 +162,7 @@ async function debitPoints(
 
 	pointsResult.push({
 		assignerId: user.key,
-		points: BigInt(fromOwnPointsTransfer),
+		points: BigInt(fromOwnPointsTransfer + fromOthersPointsTransfer),
 		epoch,
 	});
 	return pointsResult;

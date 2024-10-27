@@ -445,7 +445,7 @@ describe('epoch tick - keep top N', () => {
 		expect(bobAssigners).toContainAllValues(expectedBobAssigners);
 	});
 
-	test('Epock tick collapses the user points', async () => {
+	test('Epock tick collapses the user points and decays other\'s points', async () => {
 		const keepTopN = 5;
 		const totalTestUsers = keepTopN * 3;
 		await createCollapsibleUserSet(totalTestUsers);
@@ -454,15 +454,52 @@ describe('epoch tick - keep top N', () => {
 
 		const alice = await getUser('alice', undefined, { points: true });
 		const bob = await getUser('bob', undefined, { points: true });
-        // We have collapsed the point assignments
-        expect(alice!.points).toHaveLength(keepTopN);
-        expect(bob!.points).toHaveLength(keepTopN);
+		// We have collapsed the point assignments
+		expect(alice!.points).toHaveLength(keepTopN);
+		expect(bob!.points).toHaveLength(keepTopN);
 		// Alice and bob have others' points, but they have decayed
 		expect(alice?.othersPoints).toBe(1363n);
-		expect(bob?.othersPoints).toBe(494n);        
+		expect(bob?.othersPoints).toBe(494n);
 		// The total point value has decayed
 		expect(await tallyAssignedPoints('bob')).toBe(1074n);
 		expect(await tallyAssignedPoints('alice')).toBe(2211n);
 		expect(await tallyAssignedPoints(MORAT_USER)).toBe(15n);
+	});
+
+	test('Point transfer tags others points as if coming from the sender', async () => {
+		const keepTopN = 5;
+		const totalTestUsers = keepTopN * 3;
+		await createCollapsibleUserSet(totalTestUsers);
+
+		// Collapse the points for all users
+		await collapsePoints(['alice', 'bob'], keepTopN);
+
+		await createUser('eve', 1n);
+		// Eve was just created and has no points
+		expect(await tallyAssignedPoints('eve')).toBe(0n);
+		// Alice still has her full point compliment
+		const alice = await getUser('alice');
+		expect(await tallyAssignedPoints('alice')).toBe(2459n);
+		expect(alice?.othersPoints).toBe(1515n);
+		// At this point Alice has 1,000 points of her own, and 2459 assigned
+		// by others.  However, only 944 of those are from the top assigners,
+		// so when we transfer then a majority should be tagged as coming from
+		// her.
+		//
+		// This means we have:
+		//
+		// - 1k own points - 29%
+		// - 1515 points from others - 44%
+		// - 994 individual points from the top assigners - 27%
+
+		await assignPoints('alice', 'eve', 1000n, 1n);
+		const alicePost = await getUser('alice');
+		expect(alicePost?.ownPoints).toBe(710n);
+		expect(alicePost?.othersPoints).toBe(1077n);
+
+		expect(await tallyAssignedPoints('eve')).toBe(988n);
+		const eve = await getUser('eve', undefined, { points: true });
+		const fromAlice = eve?.points?.find((p) => p.assignerId === 'alice');
+		expect(fromAlice?.points).toBe(721n);
 	});
 });
