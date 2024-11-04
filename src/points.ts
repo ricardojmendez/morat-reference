@@ -542,6 +542,7 @@ export async function epochTick(
 					select: {
 						key: true,
 					},
+					orderBy: [{ epochUpdate: 'asc' }],
 					skip: 0,
 					take: userBatchSize,
 				});
