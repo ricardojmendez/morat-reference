@@ -523,7 +523,7 @@ export async function epochTick(
 	let pendingUserIds = [];
 	do {
 		/*
-            We will do period commts of the changes, because if we do it all
+            We will do periodic commits of the changes, because if we do it all
             inside a single transaction we are effectively locking up the entire
             set of users and user points.            
          */
