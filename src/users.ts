@@ -60,7 +60,7 @@ export async function topUpPoints(
 	userIds: string[] = []
 ) {
 	const client = tx ?? prisma;
-	await await client.$executeRaw`CALL top_up_points(${epoch},  ${MAX_POINTS}, ${userIds});`;
+	await client.$executeRaw`CALL top_up_points(${epoch},  ${MAX_POINTS}, ${userIds});`;
 }
 
 export async function createUser(
