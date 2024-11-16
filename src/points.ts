@@ -72,7 +72,7 @@ async function debitPoints(
 ): Promise<UserPoints[]> {
 	const senderOwnPoints = Number(user.ownPoints);
 	const senderOthersPoints = Number(user.othersPoints);
-	// We asume it was loaded before, or it will fail - this helps reduce queries
+	// We assume the user points were loaded before, or the operation will fail - this helps reduce queries
 	const senderPoints = user.points ?? [];
 	const senderPointTally = Number(await tallyAssignedPoints(user.key));
 
@@ -570,14 +570,14 @@ export async function epochTick(
 export async function getPoints(
 	id: string,
 	client: Prisma.TransactionClient = prisma,
-	includeIds = false
+	includePointIds = false
 ): Promise<UserPoints[]> {
-	const dbPoints = await client.userPoints.findMany({
+	const userPointsFromDB = await client.userPoints.findMany({
 		where: { ownerId: id },
 	});
-	const points: UserPoints[] = includeIds
-		? dbPoints
-		: dbPoints.map((point) => ({
+	const points: UserPoints[] = includePointIds
+		? userPointsFromDB
+		: userPointsFromDB.map((point) => ({
 				assignerId: point.assignerId,
 				points: point.points,
 				epoch: point.epoch,
@@ -615,6 +615,12 @@ export async function getPendingIntents(startAt = 0, maxCount = 20) {
 	});
 }
 
+/**
+ * Processes all pending point assign intents, up to a maximum count.
+ * @param epoch Current epoch
+ * @param maxCount Max number of itents to process
+ * @returns IDs for the intents that were successfully processed
+ */
 export async function processIntents(epoch: bigint, maxCount = 20) {
 	try {
 		const pendingIntents = await getPendingIntents(0, maxCount);
@@ -625,9 +631,9 @@ export async function processIntents(epoch: bigint, maxCount = 20) {
 		const knownIds = new Set();
 
 		const tryParallel = [];
-		for (const i of pendingIntents) {
+		for (const intent of pendingIntents) {
 			let known = false;
-			for (const id of [i.ownerId, i.assignerId]) {
+			for (const id of [intent.ownerId, intent.assignerId]) {
 				if (!knownIds.has(id)) {
 					knownIds.add(id);
 				} else {
@@ -635,9 +641,9 @@ export async function processIntents(epoch: bigint, maxCount = 20) {
 				}
 			}
 			if (!known) {
-				tryParallel.push(i);
+				tryParallel.push(intent);
 			} else {
-				retrySerially.push(i);
+				retrySerially.push(intent);
 			}
 		}
 
