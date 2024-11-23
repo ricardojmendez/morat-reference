@@ -335,7 +335,7 @@ async function assignPointsWorker(
 		return AssignResult.CantSendToSelf;
 	}
 
-	if (points <= 0) {
+	if (points <= 0n) {
 		return AssignResult.PointsShouldBePositive;
 	}
 
@@ -375,6 +375,14 @@ async function assignPointsWorker(
 	return AssignResult.Ok;
 }
 
+/**
+ * Assigns a number of points from a sender to a receiver
+ * @param sender User assigning the points
+ * @param receiver Point receiver
+ * @param points Total number of points
+ * @param epoch Epoch that the point assignment takes place on
+ * @returns AssignResult status
+ */
 export async function assignPoints(
 	sender: string,
 	receiver: string,
@@ -475,6 +483,16 @@ function pruneQueuedPoints(epoch: bigint) {
 	}
 }
 
+/**
+ * Gets through a list of user ids and, for each user, keeps only the top N
+ * point contributors while collaprasing the rest into a single "others"
+ * assignment. We do this once per epoch, instead of on every assignment,
+ * because otherwise users who just starting assigning them points would
+ * always end up in that bucket.
+ * @param ids User ids to collapse points for
+ * @param keepTop Maximum number of top contributors to keep
+ * @param client Prisma client, in case we have an open transaction
+ */
 export async function collapsePoints(
 	ids: string[],
 	keepTop = 1000,
@@ -607,7 +625,8 @@ export async function registerIntent(
 export async function getPendingIntents(startAt = 0, maxCount = 20) {
 	// I could add a distinct to this query, to make sure we don't
 	// get rows that might conflict, but that seems to make the process
-	// slower
+	// slower. It's cleaner to expect processIntents to skip or handle
+	// them serially.
 	return await prisma.pointAssignIntent.findMany({
 		orderBy: [{ id: 'asc' }],
 		skip: startAt,
@@ -653,8 +672,6 @@ export async function processIntents(epoch: bigint, maxCount = 20) {
 				assignPoints(p.assignerId, p.ownerId, p.points, epoch)
 			)
 		);
-
-		// console.debug(`Found ${pendingIntents.length} intents to process`);
 
 		for (let i = 0; i < assignResults.length; i++) {
 			const result = assignResults[i];
