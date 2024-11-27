@@ -5,6 +5,7 @@ export async function getCurrentEpochDetails() {
 	const result = await prisma.epoch.aggregate({
 		_max: {
 			id: true,
+			timestamp: true,
 		},
 	});
 
