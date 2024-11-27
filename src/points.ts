@@ -376,7 +376,7 @@ async function assignPointsWorker(
 }
 
 /**
- * Assigns a number of points from a sender to a receiver
+ * Assigns a number of points from a sender to a receiver.
  * @param sender User assigning the points
  * @param receiver Point receiver
  * @param points Total number of points
