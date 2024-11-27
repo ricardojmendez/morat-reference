@@ -445,7 +445,63 @@ describe('epoch tick - keep top N', () => {
 		expect(bobAssigners).toContainAllValues(expectedBobAssigners);
 	});
 
-	test('Epock tick collapses the user points and decays other\'s points', async () => {
+	test('collapsePoints works even when batching the deletes', async () => {
+		const keepTopN = 5;
+		const batchSize = 5;
+		const totalTestUsers = keepTopN * 5;
+		await createCollapsibleUserSet(totalTestUsers);
+
+		// Check that the assignment succeeded. Notice the amounts do not equal
+		// the sum of assigned points because some ended up with morat
+		const alicePointsPre = await getPoints('alice');
+		expect(alicePointsPre).toHaveLength(totalTestUsers);
+		expect(await tallyAssignedPoints('alice')).toBe(3478n);
+		const bobPointsPre = await getPoints('bob');
+		expect(bobPointsPre).toHaveLength(totalTestUsers);
+		expect(await tallyAssignedPoints('bob')).toBe(3228n);
+		expect(await tallyAssignedPoints(MORAT_USER)).toBe(44n);
+
+		// Collapse the points for all users
+		await collapsePoints(['alice', 'bob'], keepTopN, batchSize);
+
+		// The total point value should remain the same, because we only
+		// collapsed points but did not tick the epoch
+		expect(await tallyAssignedPoints('bob')).toBe(3228n);
+		expect(await tallyAssignedPoints('alice')).toBe(3478n);
+		expect(await tallyAssignedPoints(MORAT_USER)).toBe(44n);
+
+		// Check that we are only keeping the top N points for alice
+		// But that alice got point assigned to others
+		const alice = await getUser('alice', undefined, { points: true });
+		const alicePoints = alice!.points!;
+		expect(alicePoints).toHaveLength(keepTopN);
+		expect(alice!.othersPoints).toEqual(2534n);
+
+		// Alice only keeps the first 5 assigners, because they were the ones that
+		// assigned the most points to her
+		const aliceAssigners = alicePoints.map((p) => p.assignerId);
+		const expectedAliceAssigners = Array.from({ length: 5 }, (_, i) =>
+			getUserName(i)
+		);
+		expect(aliceAssigners).toContainAllValues(expectedAliceAssigners);
+
+		// Check that we are only keeping the top N points for alice
+		// But that alice got point assigned to others
+		const bob = await getUser('bob', undefined, { points: true });
+		expect(bob!.othersPoints).toEqual(2088n);
+		const bobPoints = bob!.points!;
+		expect(bobPoints).toHaveLength(keepTopN);
+
+		// Bob only keeps the last 5 assigners, because they were the ones that
+		// assigned the most points to him
+		const bobAssigners = bobPoints.map((p) => p.assignerId);
+		const expectedBobAssigners = Array.from({ length: 5 }, (_, i) =>
+			getUserName(20 + i)
+		);
+		expect(bobAssigners).toContainAllValues(expectedBobAssigners);
+	});
+
+	test("Epock tick collapses the user points and decays other's points", async () => {
 		const keepTopN = 5;
 		const totalTestUsers = keepTopN * 3;
 		await createCollapsibleUserSet(totalTestUsers);

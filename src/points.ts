@@ -496,6 +496,7 @@ function pruneQueuedPoints(epoch: bigint) {
 export async function collapsePoints(
 	ids: string[],
 	keepTop = 1000,
+	deleteBatchSize = 10000,
 	client: Prisma.TransactionClient = prisma
 ) {
 	for (const id of ids) {
@@ -516,19 +517,47 @@ export async function collapsePoints(
 			);
 			const pointsToDelete = pointsToCollapse.map((p) => p.id!);
 
-			await client.user.update({
-				where: {
-					key: id,
-				},
-				data: {
-					othersPoints: user.othersPoints + pointsToCollapseSum,
-					points: {
-						deleteMany: {
-							id: { in: pointsToDelete },
+			// Separate these in two calls, because we may have too many points
+			// to delete when collapsing and Postgres could barf.
+			if (pointsToDelete.length <= deleteBatchSize) {
+				await client.user.update({
+					where: {
+						key: id,
+					},
+					data: {
+						othersPoints: user.othersPoints + pointsToCollapseSum,
+						points: {
+							deleteMany: {
+								id: { in: pointsToDelete },
+							},
 						},
 					},
-				},
-			});
+				});
+			} else {
+				await client.user.update({
+					where: {
+						key: id,
+					},
+					data: {
+						othersPoints: user.othersPoints + pointsToCollapseSum,
+					},
+				});
+				for (let i = 0; i < pointsToDelete.length; i += deleteBatchSize) {
+					const deleteSlice = pointsToDelete.slice(i, i + deleteBatchSize);
+					await client.user.update({
+						where: {
+							key: id,
+						},
+						data: {
+							points: {
+								deleteMany: {
+									id: { in: deleteSlice },
+								},
+							},
+						},
+					});
+				}
+			}
 		}
 	}
 }
@@ -569,7 +598,7 @@ export async function epochTick(
 					// console.log(`Processing ${pendingUserIds.length} users`);
 					const ids = pendingUserIds.map((u) => u.key);
 					await topUpPoints(epoch, tx, ids);
-					await collapsePoints(ids, keepTopN, tx);
+					await collapsePoints(ids, keepTopN, 10000, tx);
 					await decayPoints(epoch, tx, ids);
 				}
 			},
