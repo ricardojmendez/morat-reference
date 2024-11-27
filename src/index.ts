@@ -7,7 +7,11 @@ import {
 	userList,
 	getBlockedUsers,
 } from './users';
-import { getCurrentEpoch, createEpochRecord } from './epochs';
+import {
+	getCurrentEpoch,
+	createEpochRecord,
+	getCurrentEpochDetails,
+} from './epochs';
 import {
 	claimPoints,
 	AssignResult,
@@ -25,6 +29,21 @@ import path from 'path';
  * Basic, trivial prototype to play with the points concept.
  *
  */
+
+async function shouldTickEpoch() {
+	const epochDetails = await getCurrentEpochDetails();
+	const lastEpochDate = epochDetails._max.timestamp!;
+	const currentDate = new Date();
+	const deltaSeconds = (currentDate.getTime() - lastEpochDate.getTime()) / 1000;
+	return deltaSeconds > EPOCH_SECONDS;
+}
+
+async function tickEpoch() {
+	console.log(`Ticking epoch...`);
+	currentEpoch = ((await getCurrentEpoch()) ?? 0n) + 1n;
+	await epochTick(currentEpoch, 50, 500);
+	return currentEpoch;
+}
 
 const EPOCH_SECONDS = 4 * 60 * 60;
 
@@ -193,8 +212,7 @@ const app = new Elysia()
 	)
 	.get('/epoch', () => currentEpoch)
 	.post('/epoch/tick', async () => {
-		currentEpoch = ((await getCurrentEpoch()) ?? 0n) + 1n;
-		await epochTick(currentEpoch);
+		const currentEpoch = await tickEpoch();
 		return currentEpoch;
 	})
 	.post('/echo', ({ body }) => body)
@@ -207,9 +225,13 @@ app.handle(new Request(`${serverPath}/user/morat`, { method: 'POST' }));
 
 console.log(`🦊 Elysia is running at ${serverPath}`);
 
+const shouldTick = await shouldTickEpoch();
+if (shouldTick) {
+	tickEpoch();
+}
+
 setInterval(() => {
-	console.log(`Ticking epoch...`);
-	app.handle(new Request(`${serverPath}/epoch/tick`, { method: 'POST' }));
+	tickEpoch();
 }, EPOCH_SECONDS * 1000);
 
 let itemCount = 0;

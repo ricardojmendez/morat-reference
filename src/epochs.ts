@@ -1,13 +1,19 @@
 import { prisma } from './prisma';
 import { Prisma } from '@prisma/client';
 
-export async function getCurrentEpoch() {
+export async function getCurrentEpochDetails() {
 	const result = await prisma.epoch.aggregate({
 		_max: {
 			id: true,
+			timestamp: true,
 		},
 	});
 
+	return result;
+}
+
+export async function getCurrentEpoch() {
+	const result = await getCurrentEpochDetails();
 	return result._max.id;
 }
 
