@@ -519,44 +519,25 @@ export async function collapsePoints(
 
 			// Separate these in two calls, because we may have too many points
 			// to delete when collapsing and Postgres could barf.
-			if (pointsToDelete.length <= deleteBatchSize) {
-				await client.user.update({
+			await client.user.update({
+				where: {
+					key: id,
+				},
+				data: {
+					othersPoints: user.othersPoints + pointsToCollapseSum,
+				},
+			});
+			// ... and yes, we could do an if and have one of the calls act
+			// entirely on user like I had before, but this will likely be
+			// split in two calls on the back end anyway, and it reads much
+			// cleaned this way.
+			for (let i = 0; i < pointsToDelete.length; i += deleteBatchSize) {
+				const deleteSlice = pointsToDelete.slice(i, i + deleteBatchSize);
+				await client.userPoints.deleteMany({
 					where: {
-						key: id,
-					},
-					data: {
-						othersPoints: user.othersPoints + pointsToCollapseSum,
-						points: {
-							deleteMany: {
-								id: { in: pointsToDelete },
-							},
-						},
+						id: { in: deleteSlice },
 					},
 				});
-			} else {
-				await client.user.update({
-					where: {
-						key: id,
-					},
-					data: {
-						othersPoints: user.othersPoints + pointsToCollapseSum,
-					},
-				});
-				for (let i = 0; i < pointsToDelete.length; i += deleteBatchSize) {
-					const deleteSlice = pointsToDelete.slice(i, i + deleteBatchSize);
-					await client.user.update({
-						where: {
-							key: id,
-						},
-						data: {
-							points: {
-								deleteMany: {
-									id: { in: deleteSlice },
-								},
-							},
-						},
-					});
-				}
 			}
 		}
 	}
