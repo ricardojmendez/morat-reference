@@ -24,6 +24,8 @@ Ideal, but not required:
 
 I'll focus this basic draft on describing an approach to solve the primary goals.
 
+See the [References](References.md) document for other related systems.
+
 ## Method
  
 - Every user gets a certain number of raw, unassigned points every epoch - let's go with 100 weekly points for the example.
