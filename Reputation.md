@@ -6,7 +6,7 @@ Primarily:
 
 - Have a reputation system that indicates how much trust does someone have in a community. 
 - Have the system be easily quantifiable.
-- Do not provide a single view of the world, or what could be considered a "high score problem" - someone having a lot of kudos doesn't mean that *you* should trust them (trust is relative, and it might depend on if you trust people who trust them).
+- Provide multiple perspectives on the same set of trust assignments, to avoid what could be considered a "high score problem" - someone having a lot of kudos doesn't mean that *you* should trust them (trust is relative, and it might depend on if you trust people who trust them).
 - Avoid reputation points to become an easily-tradeable currency - they should not be money.
 - Let this reputation decay with time - someone doing something popular at some point in the far past doesn't mean that reputation should carry forward.
 
