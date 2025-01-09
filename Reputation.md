@@ -27,6 +27,22 @@ I'll focus this basic draft on describing an approach to solve the primary goals
 See the [References](References.md) document for other related systems.
 
 ## Method
+
+The general approach to generating a trust view is:
+
+1. Instead of keeping a final reputation tally for a user, we track the individual assignments from others (that is, if Tom, Dick, and Harry trust Jill, we track how many trust points each has assigned her);
+2. When a user assign points to another user, what the system does is transfer that total split from a system-defined proportion of both their own points, as well as the points they have been assigned, to allow trust to spread through the network (if Jill trusts Jack and Janet, Jill would transfer them portion of her own points, as well as that trust that Tom, Dick, and Harry assigned to her);
+3. We can create a trust view for a user - Tom's trust feed is the list of users is the list of users that ended up with Tom's trust points and the assigned values, not just those Tom said he directly trusted (on point 2 above, Jack and Janet would end up with some second-hand trust from Tom through Jill, even if Tom never connected with them directly);
+4. Trust views can be blended, which allows a user to consider trust both positively and negatively (if you like Gandhi and Confucius but hate Stalin, then you could use Stalin's trust view as a deduction);
+5. The system will decay all assigned points by a set percentage every epoch, to represent how an older trust assignment cannot necessarily be relied upon as much as a recent one - if users want to signal on-going trust, they need to have on-going contact.
+
+Points 1 and 2 cause trust to spread through the network via connections. 
+
+Points 3 and 4 allow for the construction of local, personalized views, which would both avoid the high score problem and make points relevant only if they come from people you trust yourself.  This has the added positive effect that that bot networks likely would end up with low scores on most people's local view, regarding of how many points they have.
+
+Point 5 means that trust isn't permanent, and must be maintained and replenished over time, avoiding stale perspectives.
+
+## Trust point assignment process
  
 - Every user gets a certain number of raw, unassigned points every epoch - let's go with 100 weekly points for the example.
 - Any points a user spends during that week get replenished at the start of the next epoch.
