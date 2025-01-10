@@ -113,3 +113,12 @@ You *can* still get some Stalin reputation by association, however - if you asso
     - It will never transfer out;
     - We apply a floor to the points, meaning it will not get any reputation boost on assignments of less than 100 points;
     - Its reputation will decay the same as everyone else's.
+
+
+## If you are still here...
+
+Some good next steps are:
+
+1. Following along with [Design and implementation](Design-And-Implementation.md), which contains more crunchy details on implementation decisions;
+2. Checking the [Performance Considerations](Performance-considerations.md) for some notes and numbers on the data volume I've been testing it with;
+3. Reading some of the [References](References.md) for related systems and why I have chosen not to pursue them.
