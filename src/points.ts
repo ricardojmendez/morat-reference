@@ -530,7 +530,7 @@ export async function collapsePoints(
 			// ... and yes, we could do an if and have one of the calls act
 			// entirely on user like I had before, but this will likely be
 			// split in two calls on the back end anyway, and it reads much
-			// cleaned this way.
+			// cleaner this way.
 			for (let i = 0; i < pointsToDelete.length; i += deleteBatchSize) {
 				const deleteSlice = pointsToDelete.slice(i, i + deleteBatchSize);
 				await client.userPoints.deleteMany({

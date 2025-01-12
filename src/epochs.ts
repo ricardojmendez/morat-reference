@@ -44,7 +44,7 @@ export async function getEpoch(
 }
 
 /**
- * Clear all epochs from the system. Shared since the state is shared between tests.
+ * Clear all epochs from the system. Exported since the state is shared between tests.
  */
 export async function clearEpochs() {
 	await prisma.epoch.deleteMany({});
