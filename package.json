@@ -12,20 +12,20 @@
 		"lint": "eslint . --ext ts --quiet"
 	},
 	"dependencies": {
-		"@elysiajs/html": "^1.1.0",
-		"@prisma/client": "^5.21.1",
+		"@elysiajs/html": "^1.2.0",
+		"@prisma/client": "^5.22.0",
 		"elysia": "latest",
-		"prettier": "^3.3.3",
-		"prisma": "^5.21.1"
+		"prettier": "^3.4.2",
+		"prisma": "^5.22.0"
 	},
 	"devDependencies": {
 		"bun-types": "latest",
-		"husky": "^9.1.5",
-		"eslint": "^7.29.0",
-		"eslint-config-prettier": "^8.3.0",
-		"eslint-plugin-prettier": "^3.4.0",
-		"@typescript-eslint/eslint-plugin": "^5.59.11",
-		"@typescript-eslint/parser": "^5.0.0"
+		"husky": "^9.1.7",
+		"eslint": "^7.32.0",
+		"eslint-config-prettier": "^8.10.0",
+		"eslint-plugin-prettier": "^3.4.1",
+		"@typescript-eslint/eslint-plugin": "^5.62.0",
+		"@typescript-eslint/parser": "^5.62.0"
 	},
 	"module": "src/index.js"
 }
