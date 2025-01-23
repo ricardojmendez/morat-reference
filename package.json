@@ -9,7 +9,7 @@
 		"prepare": "husky",
 		"prettify": "prettier --check './src/**/*.ts'",
 		"prettify:fix": "prettier --write './src/**/*.ts'",
-		"lint": "eslint . --ext ts --quiet"
+		"lint": "eslint . --quiet"
 	},
 	"dependencies": {
 		"@elysiajs/html": "^1.2.0",
@@ -21,11 +21,11 @@
 	"devDependencies": {
 		"bun-types": "latest",
 		"husky": "^9.1.7",
-		"eslint": "^7.32.0",
-		"@typescript-eslint/eslint-plugin": "^5.62.0",
-		"@typescript-eslint/parser": "^5.62.0"
+		"eslint": "^9.18.0",
 		"eslint-config-prettier": "^10.0.1",
 		"eslint-plugin-prettier": "^5.2.3",
+		"@typescript-eslint/eslint-plugin": "^8.21.0",
+		"@typescript-eslint/parser": "^8.21.0"
 	},
 	"module": "src/index.js"
 }

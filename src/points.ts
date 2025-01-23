@@ -443,7 +443,7 @@ export async function assignPoints(
 		);
 
 		return result ?? AssignResult.UnknownError;
-	} catch (e) {
+	} catch {
 		// console.error(`Error sending from ${sender} to ${receiver}`, e);
 		return AssignResult.UnknownError;
 	}

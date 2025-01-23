@@ -105,7 +105,7 @@ const app = new Elysia()
 				return (await userExists(id))
 					? error(409, 'User already exists')
 					: await createUser(id, currentEpoch, optsIn ?? true);
-			} catch (e) {
+			} catch {
 				return error(500, `Unknown exception`);
 			}
 		},
