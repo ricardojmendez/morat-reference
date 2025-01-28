@@ -75,7 +75,7 @@ On the transfers:
 On the goals:
 
 - We can see this is similar to an UTXO system, with some constraints (there are rules on how things are transferred and choice is not arbitrary).
-- Given these are UTXOs, and the amounts are always accounted for and controlled by the contract, decaying them through time by any desirable measure becomes easier (even if the UTXO approach adds overhead once the network grows, because the outputs aren't collapsible.)
+- Given these are UTXOs, and the amounts are always accounted for and controlled by the contract, decaying them through time by any desirable measure becomes easier (even if the UTXO approach adds overhead once the network grows, so the "rep dust" will likely need to be collapsed into an "others" category once per epoch).
 - The fact that they are UTXOs and tracked individually has an added advantage: there is no single "reputation score" tally for a user, and anyone could write their own reputation heuristic for user A based on the raw data of assigned points for A (potentially even considering transfer history or deciding to discounts point from a source).
 - Having multiple reputation heuristics available would ideally further discourage people viewing this as money or as a fixed score to be maximized, thus helping defuse the extrinsic reward threat.
 - One could argue that on step 5 above it is unfair that A gets the full 50 point deduction while D only receives 48. That is OK. The points are meant to represent weight in the community at large - a recurrent closed loop of mutual backpatting may have value for the individuals, but means little for the group.
